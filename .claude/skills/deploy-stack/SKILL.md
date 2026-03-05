@@ -69,47 +69,110 @@ Present the four options with brief descriptions:
 
 **Default suggestion**: Intelligent Inference Scheduling (unless user has specific requirements)
 
-### Step 2: Gather Project Configuration
+### Step 2: Auto-Detect Current Project/Namespace
 
-**Ask for the namespace/project name:**
-- Default: `llm-d` (short names recommended to avoid hostname length issues)
-- Ask: "What Kubernetes namespace would you like to use?"
+**Automatically detect the current namespace:**
 
-**Ask for release name postfix (optional):**
-- Default: Empty (no postfix)
-- Ask: "Do you need a custom release name postfix for concurrent installations?" *(optional)*
+1. **For OpenShift clusters**, check current project:
+   ```bash
+   oc project
+   ```
+   This returns the current project name, which is also the namespace.
 
-### Step 3: Read Guide Configuration and Detect Defaults
+2. **For standard Kubernetes**, check current context namespace:
+   ```bash
+   kubectl config view --minify --output 'jsonpath={..namespace}'
+   ```
 
-**Read the selected guide's README.md** from `guides/{selected-path}/README.md` to understand:
-- Default configuration values
-- Hardware requirements
-- Prerequisites
-- Deployment commands
+3. **If no namespace is detected**, only then suggest default: `llm-d`
 
-**Explore existing namespace resources:**
-```bash
-# Check if namespace exists
-kubectl get namespace ${NAMESPACE}
+**Present detected namespace to user:**
+- If detected: "Detected current namespace: `{detected-namespace}`. Using this for deployment."
+- If not detected: "No current namespace detected. Would you like to use `llm-d`?"
 
-# Check for existing resources in namespace (if it exists)
-kubectl get all,pvc,httproute,gateway,inferencepool -n ${NAMESPACE}
+**Auto-detect release name postfix:**
+- Check for existing releases in the namespace to detect if postfix is needed
+- Only ask if concurrent installations are detected or if detection fails
 
-# Check for HuggingFace token secret
-kubectl get secret llm-d-hf-token -n ${NAMESPACE}
-```
+### Step 3: Auto-Detect Configuration and Resources
 
-**Detect and present defaults:**
+**Read the selected guide's README.md** from `guides/{selected-path}/README.md` to understand requirements.
 
-Based on the guide's configuration files (e.g., `values.yaml`, `helmfile.yaml`), present detected defaults:
-- Hardware backend (from guide defaults, typically `cuda`)
-- Gateway provider (from guide defaults, typically `istio`)
-- Storage class (if PVC needed, typically `default`)
-- Model configuration (replica count, GPU allocation, etc.)
+**Automatically detect existing resources and configuration:**
 
-**Ask: "The guide uses these defaults: [list defaults]. Do you want to change any of these?"**
+1. **Detect Hardware/Accelerators:**
+   ```bash
+   # Check for NVIDIA GPUs
+   kubectl get nodes -o json | jq '.items[].status.capacity | select(."nvidia.com/gpu" != null)'
+   
+   # Check for AMD GPUs
+   kubectl get nodes -o json | jq '.items[].status.capacity | select(."amd.com/gpu" != null)'
+   
+   # Check for Intel XPU
+   kubectl get nodes -o json | jq '.items[].status.capacity | select(."gpu.intel.com/i915" != null)'
+   
+   # Check for Intel Gaudi (HPU)
+   kubectl get nodes -o json | jq '.items[].status.capacity | select(."habana.ai/gaudi" != null)'
+   
+   # Check for TPU (GKE)
+   kubectl get nodes -o json | jq '.items[].status.capacity | select(."google.com/tpu" != null)'
+   ```
+   
+   Based on detection, set hardware backend: `cuda`, `amd`, `xpu`, `hpu`, `tpu`, or `cpu` (if no accelerators found)
 
-Only if the user wants to change defaults, ask for specific values. Otherwise, proceed with detected defaults.
+2. **Detect Gateway Provider:**
+   ```bash
+   # Check for Istio
+   kubectl get namespace istio-system 2>/dev/null && echo "istio"
+   
+   # Check for K-Gateway
+   kubectl get crd gateways.gateway.networking.k8s.io 2>/dev/null && kubectl get pods -n kube-system -l app=gateway 2>/dev/null && echo "kgateway"
+   
+   # Check for Agent Gateway
+   kubectl get deployment -n gateway-system agent-gateway 2>/dev/null && echo "agentgateway"
+   
+   # Check for GKE Gateway (check if running on GKE)
+   kubectl get nodes -o json | jq -r '.items[0].metadata.labels["cloud.google.com/gke-nodepool"]' 2>/dev/null && echo "gke"
+   ```
+
+3. **Detect Storage Class:**
+   ```bash
+   # Get default storage class
+   kubectl get storageclass -o json | jq -r '.items[] | select(.metadata.annotations["storageclass.kubernetes.io/is-default-class"]=="true") | .metadata.name'
+   
+   # If no default, list available storage classes
+   kubectl get storageclass -o name
+   ```
+
+4. **Check existing resources in namespace:**
+   ```bash
+   # Check if namespace exists
+   kubectl get namespace ${NAMESPACE} 2>/dev/null
+   
+   # If exists, check for existing resources
+   kubectl get all,pvc,httproute,gateway,inferencepool -n ${NAMESPACE} 2>/dev/null
+   
+   # Check for HuggingFace token secret
+   kubectl get secret llm-d-hf-token -n ${NAMESPACE} 2>/dev/null
+   ```
+
+**Present detected configuration:**
+
+"Detected configuration:
+- Namespace: `{detected-namespace}`
+- Hardware: `{detected-hardware}` ({count} nodes with {accelerator-type})
+- Gateway Provider: `{detected-gateway}`
+- Storage Class: `{detected-storage-class}`
+- Existing resources: {list if any found}"
+
+**Only ask user for input if:**
+1. Auto-detection failed for any component
+2. Detected resource doesn't exist or is invalid
+3. User wants to override detected values
+
+**Ask: "Proceed with detected configuration, or would you like to change anything?"**
+
+If user wants changes, ask specifically for the values they want to override. Otherwise, proceed with detected configuration.
 
 ### Step 4: Follow the Guide's Deployment Steps
 
@@ -135,25 +198,49 @@ Most guides follow this pattern (refer to the specific guide for exact commands)
    kubectl get namespace ${NAMESPACE} || kubectl create namespace ${NAMESPACE}
    ```
 
-2. **Verify prerequisites** (as listed in guide's README.md):
+2. **Auto-detect or create PVC (if needed by the guide):**
+   
+   First, check if a PVC already exists in the namespace:
+   ```bash
+   kubectl get pvc -n ${NAMESPACE}
+   ```
+   
+   - **If PVC exists and is Bound**: Use the existing PVC. Inform user: "Found existing PVC `{pvc-name}` in namespace `{namespace}`. Using it for deployment."
+   
+   - **If no PVC exists**: Check the guide to determine if a PVC is required. If required:
+     - Read PVC configuration from guide (typically in `manifests/pvc.yaml` or similar)
+     - Detect storage class (from Step 3 auto-detection)
+     - Inform user: "No PVC found in namespace `{namespace}`. Creating PVC `{pvc-name}` with storage class `{storage-class}` and size `{size}`."
+     - Create and apply the PVC:
+       ```bash
+       kubectl apply -f {guide-path}/manifests/pvc.yaml -n ${NAMESPACE}
+       # Or create inline if guide doesn't have a PVC manifest
+       ```
+     - Wait for PVC to be Bound before proceeding:
+       ```bash
+       kubectl wait --for=condition=Bound pvc/{pvc-name} -n ${NAMESPACE} --timeout=300s
+       ```
+
+3. **Verify prerequisites** (as listed in guide's README.md):
    - Client tools installed
    - HuggingFace token secret created
    - Gateway provider deployed
    - Infrastructure requirements met
+   - PVC is Bound (if required)
 
-3. **Deploy using helmfile** (command from guide):
+4. **Deploy using helmfile** (command from guide):
    ```bash
    helmfile apply -n ${NAMESPACE}
    # Add -e flags only if changing defaults: -e <hardware> -e <gateway>
    ```
 
-4. **Apply HTTPRoute** (if guide includes it):
+5. **Apply HTTPRoute** (if guide includes it):
    ```bash
    kubectl apply -f httproute.yaml -n ${NAMESPACE}
    # Or httproute.gke.yaml for GKE
    ```
 
-5. **Validate deployment** (commands from guide):
+6. **Validate deployment** (commands from guide):
    ```bash
    kubectl get pods -n ${NAMESPACE}
    kubectl get httproute,gateway,inferencepool -n ${NAMESPACE}
