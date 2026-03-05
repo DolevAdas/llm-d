@@ -57,6 +57,29 @@ Each Well-lit Path guide contains its own prerequisites section. Common prerequi
 
 When a user requests llm-d deployment, follow this workflow:
 
+### Step 0: Verify LLMD_PATH or Get Repository Location
+
+**Check if LLMD_PATH environment variable is set:**
+
+```bash
+echo $LLMD_PATH
+```
+
+- **If LLMD_PATH is set and points to a valid directory**: Use it for all subsequent commands
+  - Verify it's the llm-d repository: Check for `guides/` directory
+  - Inform user: "Using llm-d repository at: `{LLMD_PATH}`"
+
+- **If LLMD_PATH is not set or empty**:
+  - Ask user: "Where is your llm-d repository clone located? Please provide the full path."
+  - Wait for user to provide the path (e.g., `/Users/username/dev/llm-d` or `/home/user/projects/llm-d`)
+  - Verify the provided path exists and contains `guides/` directory
+  - Use this path for all subsequent commands (replace `${LLMD_PATH}` with the actual path)
+  - Optionally suggest: "Would you like to set LLMD_PATH environment variable for future use?"
+
+**Important**: All subsequent commands that reference `${LLMD_PATH}` should use either:
+- The environment variable if it was set
+- The user-provided path if LLMD_PATH was not set
+
 ### Step 1: Select Well-lit Path Guide
 
 **Ask the user which deployment strategy they want to use:**
