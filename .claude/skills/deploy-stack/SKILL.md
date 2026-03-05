@@ -375,15 +375,6 @@ Point user to guide's documentation for:
 - Use TLS for gateway ingress
 - Audit all deployments and changes
 
-## Combining Well-lit Paths
-
-Tiered Prefix Cache can be combined with any of the other three Well-lit Paths:
-- Inference Scheduling + Tiered Cache
-- P/D Disaggregation + Tiered Cache
-- Wide-EP + Tiered Cache
-
-This provides both performance optimization and extended cache capacity.
-
 ## What Not To Do
 
 Critical rules to follow when deploying and managing llm-d:
