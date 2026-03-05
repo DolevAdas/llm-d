@@ -112,11 +112,7 @@ Which deployment strategy would you like to use?"
 
 **Default suggestion**: If `inference-scheduling` guide exists, suggest it as default for most deployments.
 
-**Note**: This approach automatically adapts to new guides added or removed from the repository without requiring SKILL.md updates.
-
 ### Step 2: Auto-Detect Current Project/Namespace
-
-**Automatically detect the current namespace:**
 
 1. **For OpenShift clusters**, check current project:
    ```bash
