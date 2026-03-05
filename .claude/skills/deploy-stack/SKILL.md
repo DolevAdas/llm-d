@@ -24,12 +24,13 @@ This skill enables AI agents to guide users through deploying llm-d on Kubernete
 
 ## Overview
 
-llm-d offers four main Well-lit Path deployment strategies:
+llm-d provides Well-lit Path deployment guides located in the `guides/` directory. Each guide has a README.md file with the prefix "Well-lit Path:" in its title, containing tested and benchmarked recipes for specific deployment strategies.
 
-1. **Intelligent Inference Scheduling** (`guides/inference-scheduling/`) - Default deployment with load-aware and prefix-cache aware routing
-2. **Prefill/Decode Disaggregation** (`guides/pd-disaggregation/`) - Split inference for large models with long prompts
-3. **Wide Expert Parallelism** (`guides/wide-ep-lws/`) - Deploy very large MoE models with Data/Expert Parallelism
-4. **Tiered Prefix Cache** (`guides/tiered-prefix-cache/`) - Extend cache capacity beyond accelerator memory
+**To discover available Well-lit Paths**, the agent will:
+1. List directories under `guides/` (excluding `prereq/` and `recipes/`)
+2. Check each directory for a README.md file
+3. Read the README.md title to identify Well-lit Path guides (those starting with "Well-lit Path:")
+4. Present the available guides to the user with their descriptions
 
 ## When to Use This Skill
 
@@ -80,17 +81,38 @@ echo $LLMD_PATH
 - The environment variable if it was set
 - The user-provided path if LLMD_PATH was not set
 
-### Step 1: Select Well-lit Path Guide
+### Step 1: Discover and Select Well-lit Path Guide
 
-**Ask the user which deployment strategy they want to use:**
+**Automatically discover available Well-lit Path guides:**
 
-Present the four options with brief descriptions:
-1. **Intelligent Inference Scheduling** - Best for most deployments (default, load-aware routing)
-2. **Prefill/Decode Disaggregation** - For large models with long prompts (requires RDMA)
-3. **Wide Expert Parallelism** - For very large MoE models like DeepSeek-R1 (requires 32+ GPUs, RDMA)
-4. **Tiered Prefix Cache** - Add to any path for extended cache capacity
+1. **List guide directories:**
+   ```bash
+   ls -d ${LLMD_PATH}/guides/*/ | grep -v -E '(prereq|recipes)' | xargs -n1 basename
+   ```
 
-**Default suggestion**: Intelligent Inference Scheduling (unless user has specific requirements)
+2. **For each directory, check if it contains a Well-lit Path guide:**
+   ```bash
+   # Check if README.md exists and starts with "Well-lit Path:"
+   head -n 5 ${LLMD_PATH}/guides/{guide-dir}/README.md | grep "^# Well-lit Path:"
+   ```
+
+3. **Extract guide information:**
+   - Guide name (from README.md title after "Well-lit Path:")
+   - Guide directory name
+   - Brief description (from Overview section)
+
+**Present discovered guides to user:**
+
+"Available Well-lit Path deployment strategies:
+1. {Guide 1 Name} (`guides/{dir1}/`) - {brief description}
+2. {Guide 2 Name} (`guides/{dir2}/`) - {brief description}
+...
+
+Which deployment strategy would you like to use?"
+
+**Default suggestion**: If `inference-scheduling` guide exists, suggest it as default for most deployments.
+
+**Note**: This approach automatically adapts to new guides added or removed from the repository without requiring SKILL.md updates.
 
 ### Step 2: Auto-Detect Current Project/Namespace
 
@@ -343,10 +365,8 @@ Point user to guide's documentation for:
 ## Additional Resources
 
 - **Quickstart**: `guides/QUICKSTART.md`
-- **Project Overview**: `PROJECT.md`
-- **Contributing**: `CONTRIBUTING.md`
+- **Architecture**: `https://llm-d.ai/docs/architecture`
 - **Gateway Customization**: `docs/customizing-your-gateway.md`
-- **vLLM Documentation**: https://docs.vllm.ai
 - **Inference Gateway**: https://github.com/kubernetes-sigs/gateway-api-inference-extension
 - **Inference Scheduler Architecture**: https://github.com/llm-d/llm-d-inference-scheduler/blob/main/docs/architecture.md
 
