@@ -12,11 +12,6 @@ description: Configure and deploy llm-d (high-performance distributed LLM infere
 > **Format to use before every creation action**:
 > > "I am about to create `<resource-type>` named `<name>` because `<reason>`. Proceeding now."
 >
-> **Examples**:
-> - "I am about to create namespace `llm-d` because it does not exist yet. Proceeding now."
-> - "I am about to create PVC `llm-d-kv-cache-storage` (18000Gi, storage class: default) because no PVC was found in namespace `llm-d`. Proceeding now."
-> - "I am about to create file `${LLMD_PATH}/pvc.yaml` with the PVC definition. Proceeding now."
-> - "I am about to apply the HTTPRoute from `httproute.yaml` to namespace `llm-d`. Proceeding now."
 >
 > **Never silently create resources.** If you are unsure whether a resource already exists, check first, then notify before acting.
 
@@ -60,26 +55,7 @@ When a user requests llm-d deployment, follow this workflow:
 
 ### Step 0: Verify LLMD_PATH or Get Repository Location
 
-**Check if LLMD_PATH environment variable is set:**
-
-```bash
-echo $LLMD_PATH
-```
-
-- **If LLMD_PATH is set and points to a valid directory**: Use it for all subsequent commands
-  - Verify it's the llm-d repository: Check for `guides/` directory
-  - Inform user: "Using llm-d repository at: `{LLMD_PATH}`"
-
-- **If LLMD_PATH is not set or empty**:
-  - Ask user: "Where is your llm-d repository clone located? Please provide the full path."
-  - Wait for user to provide the path (e.g., `/Users/username/dev/llm-d` or `/home/user/projects/llm-d`)
-  - Verify the provided path exists and contains `guides/` directory
-  - Use this path for all subsequent commands (replace `${LLMD_PATH}` with the actual path)
-  - Optionally suggest: "Would you like to set LLMD_PATH environment variable for future use?"
-
-**Important**: All subsequent commands that reference `${LLMD_PATH}` should use either:
-- The environment variable if it was set
-- The user-provided path if LLMD_PATH was not set
+Use LLMD_PATH environment variable if set; if not set, ask the user for the llm-d repository path.
 
 ### Step 1: Discover and Select Well-lit Path Guide
 
@@ -228,7 +204,7 @@ cd ${LLMD_PATH}/guides/{selected-path}
 - Configuration options
 - Validation steps
 
-**Key principle**: Mimic the manual experience - only provide input when changing defaults.
+**Key principle**: Only provide input when changing defaults.
 
 #### Common Deployment Pattern
 
