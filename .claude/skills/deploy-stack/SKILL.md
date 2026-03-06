@@ -4,6 +4,15 @@ description: Configure and deploy llm-d (high-performance distributed LLM infere
 ---
 
 # llm-d Kubernetes Deployment Skill
+## 📋 Command Execution Notice
+
+**Before executing any command, I will:**
+1. **Explain what the command does** - A clear description of the command's purpose and expected outcome
+2. **Show the actual command** - The exact command that will be executed
+3. **Explain why it's needed** - How this command fits into the overall deployment workflow
+
+This ensures you understand each step before it happens and can verify the actions align with your intentions.
+
 
 > ## 🔔 ALWAYS NOTIFY THE USER BEFORE CREATING ANYTHING
 >
