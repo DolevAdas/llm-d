@@ -49,7 +49,7 @@ Activate this skill when users need to:
 
 Each Well-lit Path guide contains its own prerequisites section. Common prerequisites include:
 
-1. **LLMD_PATH Environment Variable** - Must point to your llm-d repository clone
+1. **LLMD_PATH Environment Variable** - Point to your llm-d repository clone
 2. **Client Tools** - kubectl, helm, helmfile, git (see `guides/prereq/client-setup/README.md`)
 3. **HuggingFace Token** - Secret `llm-d-hf-token` with key `HF_TOKEN` in target namespace
 4. **Gateway Provider** - Istio, K-Gateway, or Agent Gateway (see `guides/prereq/gateway-provider/README.md`)
@@ -88,33 +88,14 @@ Use LLMD_PATH environment variable if set; if not set, ask the user for the llm-
 
 **Present discovered guides to user:**
 
-"Available Well-lit Path deployment strategies:
-1. {Guide 1 Name} (`guides/{dir1}/`) - {brief description}
-2. {Guide 2 Name} (`guides/{dir2}/`) - {brief description}
-...
-
-Which deployment strategy would you like to use?"
-
-**Default suggestion**: If `inference-scheduling` guide exists, suggest it as default for most deployments.
+**Default suggestion**: If `inference-scheduling` guide exists, suggest it as default.
 
 ### Step 2: Auto-Detect Current Project/Namespace
 
-1. **For OpenShift clusters**, check current project:
-   ```bash
-   oc project
-   ```
-   This returns the current project name, which is also the namespace.
-
-2. **For standard Kubernetes**, check current context namespace:
-   ```bash
-   kubectl config view --minify --output 'jsonpath={..namespace}'
-   ```
-
-3. **If no namespace is detected**, only then suggest default: `llm-d`
-
-**Present detected namespace to user:**
-- If detected: "Detected current namespace: `{detected-namespace}`. Using this for deployment."
-- If not detected: "No current namespace detected. Would you like to use `llm-d`?"
+1. check if a NAMESPACE environment variable is specified. 
+2. check if an oc project exists.
+3. If none of the above holds, ask the user for the NAMESPACE where it is deployed.
+4. Make sure the NAMESPACE environment variable is set.
 
 **Auto-detect release name postfix:**
 - Check for existing releases in the namespace to detect if postfix is needed
@@ -122,7 +103,11 @@ Which deployment strategy would you like to use?"
 
 ### Step 3: Auto-Detect Configuration and Resources
 
-**Read the selected guide's README.md** from `guides/{selected-path}/README.md` to understand requirements.
+**Extract requirements from the guide:**
+- Parse the guide's README.md to identify required components e.g., Gateway API, Kueue, monitoring tools
+- Identify hardware requirements (GPU types, memory, storage)
+- Note any prerequisite configurations or dependencies
+- Extract recommended values and configuration parameters
 
 **Automatically detect existing resources and configuration:**
 
@@ -143,8 +128,6 @@ Which deployment strategy would you like to use?"
    # Check for TPU (GKE)
    kubectl get nodes -o json | jq '.items[].status.capacity | select(."google.com/tpu" != null)'
    ```
-   
-   Based on detection, set hardware backend: `cuda`, `amd`, `xpu`, `hpu`, `tpu`, or `cpu` (if no accelerators found)
 
 2. **Detect Gateway Provider:**
    ```bash
@@ -195,8 +178,6 @@ Which deployment strategy would you like to use?"
 1. Auto-detection failed for any component
 2. Detected resource doesn't exist or is invalid
 3. User wants to override detected values
-
-**Ask: "Proceed with detected configuration, or would you like to change anything?"**
 
 If user wants changes, ask specifically for the values they want to override. Otherwise, proceed with detected configuration.
 
