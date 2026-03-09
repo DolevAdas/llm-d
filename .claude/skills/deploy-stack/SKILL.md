@@ -181,77 +181,105 @@ Use LLMD_PATH environment variable if set; if not set, ask the user for the llm-
 
 If user wants changes, ask specifically for the values they want to override. Otherwise, proceed with detected configuration.
 
-### Step 4: Follow the Guide's Deployment Steps
+### Step 4: Execute Deployment Actions
 
 **Navigate to the guide directory:**
 ```bash
 cd ${LLMD_PATH}/guides/{selected-path}
 ```
 
-**Follow the guide's README.md deployment instructions exactly.** The guide contains:
-- Prerequisites checklist
-- Exact deployment commands
-- Configuration options
-- Validation steps
+**Key principle**: Only provide input when changing defaults. Use auto-detected values unless user explicitly overrides.
 
-**Key principle**: Only provide input when changing defaults.
+#### Deployment Actions
 
-#### Common Deployment Pattern
+Execute these actions in sequence, adapting based on the specific guide's requirements:
 
-Most guides follow this pattern (refer to the specific guide for exact commands):
+#### 4.1 Namespace Management
 
-1. **Check/Create namespace:**
-   ```bash
-   kubectl get namespace ${NAMESPACE} || kubectl create namespace ${NAMESPACE}
-   ```
+**Verify namespace exists:**
+```bash
+kubectl get namespace ${NAMESPACE} || kubectl create namespace ${NAMESPACE}
+```
 
-2. **Auto-detect or create PVC (if needed by the guide):**
-   
-   First, check if a PVC already exists in the namespace:
-   ```bash
-   kubectl get pvc -n ${NAMESPACE}
-   ```
-   
-   - **If PVC exists and is Bound**: Use the existing PVC. Inform user: "Found existing PVC `{pvc-name}` in namespace `{namespace}`. Using it for deployment."
-   
-   - **If no PVC exists**: Check the guide to determine if a PVC is required. If required:
-     - Read PVC configuration from guide (typically in `manifests/pvc.yaml` or similar)
-     - Detect storage class (from Step 3 auto-detection)
-     - Inform user: "No PVC found in namespace `{namespace}`. Creating PVC `{pvc-name}` with storage class `{storage-class}` and size `{size}`."
-     - Create and apply the PVC:
-       ```bash
-       kubectl apply -f {guide-path}/manifests/pvc.yaml -n ${NAMESPACE}
-       # Or create inline if guide doesn't have a PVC manifest
-       ```
-     - Wait for PVC to be Bound before proceeding:
-       ```bash
-       kubectl wait --for=condition=Bound pvc/{pvc-name} -n ${NAMESPACE} --timeout=300s
-       ```
+#### 4.2 Storage Provisioning
 
-3. **Verify prerequisites** (as listed in guide's README.md):
-   - Client tools installed
-   - HuggingFace token secret created
-   - Gateway provider deployed
-   - Infrastructure requirements met
-   - PVC is Bound (if required)
+**Check for existing PVC:**
+```bash
+kubectl get pvc -n ${NAMESPACE}
+```
 
-4. **Deploy using helmfile** (command from guide):
-   ```bash
-   helmfile apply -n ${NAMESPACE}
-   # Add -e flags only if changing defaults: -e <hardware> -e <gateway>
-   ```
+**If PVC is required by the guide:**
+- **PVC exists and is Bound**: Use existing PVC. Inform user: "Found existing PVC `{pvc-name}` in namespace `{namespace}`. Using it for deployment."
+- **No PVC exists**:
+  - Read PVC configuration from guide (typically in `manifests/pvc.yaml`)
+  - Use auto-detected storage class from Step 3
+  - Inform user: "Creating PVC `{pvc-name}` with storage class `{storage-class}` and size `{size}`."
+  - Apply PVC manifest:
+    ```bash
+    kubectl apply -f {guide-path}/manifests/pvc.yaml -n ${NAMESPACE}
+    ```
+  - Wait for PVC to be Bound:
+    ```bash
+    kubectl wait --for=condition=Bound pvc/{pvc-name} -n ${NAMESPACE} --timeout=300s
+    ```
 
-5. **Apply HTTPRoute** (if guide includes it):
-   ```bash
-   kubectl apply -f httproute.yaml -n ${NAMESPACE}
-   # Or httproute.gke.yaml for GKE
-   ```
+#### 4.3 Prerequisites Verification
 
-6. **Validate deployment** (commands from guide):
-   ```bash
-   kubectl get pods -n ${NAMESPACE}
-   kubectl get httproute,gateway,inferencepool -n ${NAMESPACE}
-   ```
+**Verify all prerequisites are met:**
+- Client tools installed (kubectl, helm, helmfile)
+- HuggingFace token secret created (if required by guide)
+- Gateway provider deployed (if required by guide)
+- Infrastructure requirements met (nodes, accelerators)
+- PVC is Bound (if required by guide)
+
+**Check each prerequisite programmatically:**
+```bash
+# Example: Check for HuggingFace secret
+kubectl get secret hf-token -n ${NAMESPACE} 2>/dev/null || echo "Warning: HuggingFace token secret not found"
+
+# Example: Check for Gateway API CRDs
+kubectl get crd gateways.gateway.networking.k8s.io 2>/dev/null || echo "Warning: Gateway API CRDs not installed"
+```
+
+#### 4.4 Helmfile Deployment
+
+**Deploy using helmfile with auto-detected configuration:**
+```bash
+helmfile apply -n ${NAMESPACE}
+```
+
+**Only add environment flags if overriding defaults:**
+- Hardware override: `-e <hardware>` (e.g., `-e cuda`, `-e tpu`)
+- Gateway override: `-e <gateway>` (e.g., `-e istio`, `-e kgateway`)
+
+**Example with overrides:**
+```bash
+helmfile apply -n ${NAMESPACE} -e cuda -e istio
+```
+
+#### 4.5 HTTPRoute Configuration
+
+**If guide includes HTTPRoute, apply it:**
+```bash
+# Standard HTTPRoute
+kubectl apply -f httproute.yaml -n ${NAMESPACE}
+
+# Or GKE-specific HTTPRoute
+kubectl apply -f httproute.gke.yaml -n ${NAMESPACE}
+```
+
+#### 4.6 Deployment Validation
+
+**Verify resources are created:**
+```bash
+kubectl get pods -n ${NAMESPACE}
+kubectl get httproute,gateway,inferencepool -n ${NAMESPACE}
+```
+
+**Check pod status:**
+```bash
+kubectl get pods -n ${NAMESPACE} -w
+```
 
 ### Step 5: Execute the Deployment Plan
 
@@ -279,24 +307,126 @@ Most guides follow this pattern (refer to the specific guide for exact commands)
 
 ### Step 6: Validate Deployment
 
-Follow the guide's validation steps. Typically:
+Execute these validation steps to ensure successful deployment:
 
+#### 6.1 Pod Status Validation
+
+**Check all pods are running:**
 ```bash
-# Check pod status
 kubectl get pods -n ${NAMESPACE}
+```
 
-# Verify resources
-kubectl get httproute,gateway,inferencepool -n ${NAMESPACE}
+**Expected states:**
+- All pods should be in `Running` state
+- Ready column should show `N/N` (all containers ready)
+- Restarts should be 0 or minimal
 
-# Check helm releases
+**If pods are not running, check status:**
+```bash
+# Pending pods - check events
+kubectl describe pod <pod-name> -n ${NAMESPACE}
+
+# CrashLoopBackOff - check logs
+kubectl logs <pod-name> -n ${NAMESPACE}
+kubectl logs <pod-name> -n ${NAMESPACE} --previous
+
+# ImagePullBackOff - verify image and credentials
+kubectl describe pod <pod-name> -n ${NAMESPACE} | grep -A 5 "Events:"
+```
+
+#### 6.2 Resource Validation
+
+**Verify all expected resources exist:**
+```bash
+# Check InferencePool
+kubectl get inferencepool -n ${NAMESPACE}
+
+# Check Gateway and HTTPRoute
+kubectl get gateway,httproute -n ${NAMESPACE}
+
+# Check Services
+kubectl get svc -n ${NAMESPACE}
+
+# Check PVCs (if applicable)
+kubectl get pvc -n ${NAMESPACE}
+```
+
+**Verify resource status:**
+```bash
+# InferencePool should show Ready status
+kubectl describe inferencepool -n ${NAMESPACE}
+
+# Gateway should be Programmed and Accepted
+kubectl describe gateway -n ${NAMESPACE}
+
+# HTTPRoute should be Accepted
+kubectl describe httproute -n ${NAMESPACE}
+```
+
+#### 6.3 Helm Release Validation
+
+**Verify Helm releases are deployed:**
+```bash
 helm list -n ${NAMESPACE}
 ```
 
-If any resource is not in expected state, diagnose using:
+**Expected output:**
+- All releases should show `STATUS: deployed`
+- Chart versions should match expected versions
+
+#### 6.4 Connectivity Validation
+
+**Test internal connectivity:**
 ```bash
-kubectl describe <resource-type> <resource-name> -n ${NAMESPACE}
-kubectl logs <pod-name> -n ${NAMESPACE}
+# Get service endpoints
+kubectl get endpoints -n ${NAMESPACE}
+
+# Test service DNS resolution from a test pod
+kubectl run -it --rm debug --image=curlimages/curl --restart=Never -n ${NAMESPACE} -- sh
+# Inside pod: curl http://<service-name>.<namespace>.svc.cluster.local/health
 ```
+
+**Test external access (if HTTPRoute is configured):**
+```bash
+# Get Gateway address
+kubectl get gateway -n ${NAMESPACE} -o jsonpath='{.items[0].status.addresses[0].value}'
+
+# Test endpoint (replace with actual gateway address)
+curl http://<gateway-address>/v1/models
+```
+
+#### 6.5 Logs Validation
+
+**Check for errors in logs:**
+```bash
+# Check all pod logs for errors
+kubectl logs -l app=<app-label> -n ${NAMESPACE} --tail=50
+
+# Check specific components
+kubectl logs -l component=vllm -n ${NAMESPACE} --tail=100
+kubectl logs -l component=gateway -n ${NAMESPACE} --tail=100
+```
+
+**Look for:**
+- Successful model loading messages
+- No error or warning messages
+- Healthy startup sequences
+
+#### 6.6 Performance Validation
+
+**Verify resource utilization:**
+```bash
+# Check CPU and memory usage
+kubectl top pods -n ${NAMESPACE}
+
+# Check GPU utilization (if applicable)
+kubectl exec -it <pod-name> -n ${NAMESPACE} -- nvidia-smi
+```
+
+**Expected behavior:**
+- Pods should not be at resource limits
+- GPUs should be allocated and visible
+- Memory usage should be stable
 
 ### Step 7: Provide Next Steps
 
