@@ -748,55 +748,6 @@ echo "Gateway Address: $(kubectl get gateway -n ${NAMESPACE} -o jsonpath='{.item
 2. ✅ InferencePool shows `Ready: True` condition
 3. ✅ Gateway shows `Programmed: True` and `Accepted: True` conditions
 4. ✅ HTTPRoute shows `Accepted: True` condition
-### Step 7: Provide Deployment Summary
-
-After successful deployment validation (all 8 criteria in 6.10 pass), provide the user with a summary.
-
-**Use `attempt_completion` with the following information**:
-
-```
-Deployment Summary:
-- Deployment Name: <deployment-name>
-- Namespace: <namespace>
-- Model: <model-name>
-- Accelerator: <accelerator-type>
-- Gateway Address: <gateway-address>
-
-Access Information:
-- Health Check: curl http://<gateway-address>/health
-- Models List: curl http://<gateway-address>/v1/models
-- Inference: curl -X POST http://<gateway-address>/v1/completions -H "Content-Type: application/json" -d '{"model":"<model-name>","prompt":"test","max_tokens":50}'
-
-Deployment Files Location: <deployment-directory>
-
-Monitoring:
-- View logs: kubectl logs -l llm-d.ai/deployment=<deployment-name> -n <namespace>
-- Check status: kubectl get pods,inferencepool,gateway,httproute -n <namespace>
-
-Next Steps:
-- Review README.md in deployment directory for detailed usage
-- Set up monitoring dashboards if needed
-- Configure autoscaling if required
-```
-
-**Do NOT include**:
-- Questions or offers for further assistance
-- Conversational phrases like "Great!" or "Certainly"
-- Requests for feedback
-
-**Example attempt_completion**:
-```
-Deployment complete.
-
-- Deployment: custom-llama
-- Namespace: llmd-custom
-- Model: Qwen/Qwen3-32B
-- Gateway: http://34.123.45.67
-
-Files created in ./custom-llama-deploy/
-All validation checks passed.
-```
-
 5. ✅ Model loading logs show "vLLM API server started"
 6. ✅ Health endpoint (`curl http://${GATEWAY_ADDRESS}/health`) returns 200 OK
 7. ✅ Models endpoint (`curl http://${GATEWAY_ADDRESS}/v1/models`) lists the deployed model
@@ -812,177 +763,91 @@ All validation checks passed.
 
 ### Step 7: Provide Deployment Summary
 
-After successful deployment, provide the user with:
+**After ALL 8 success criteria pass**, use `attempt_completion` with this format:
 
-1. **Deployment location**: Path to the deployment directory
-2. **Access information**: Gateway address and endpoints
-3. **Next steps**: Link to README.md for detailed usage
-4. **Monitoring**: How to access metrics and logs
-5. **Troubleshooting**: Common issues and solutions
-
-
-## Configuration Guidelines
-
-### Hardware-Specific Configurations
-
-**Reference**: [llm-d Accelerator Documentation](https://github.com/llm-d/llm-d/blob/main/docs/accelerators/README.md)
-
-#### NVIDIA GPUs
-```yaml
-accelerator:
-  type: nvidia
-decode:
-  containers:
-    - image: ghcr.io/llm-d/llm-d-cuda:v0.5.0
 ```
-**Example**: [NVIDIA GPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values.yaml)
+Deployment complete.
 
-#### AMD GPUs
-```yaml
-accelerator:
-  type: amd
-decode:
-  containers:
-    - image: ghcr.io/llm-d/llm-d-rocm:v0.5.0
+Configuration:
+- Name: <deployment-name>
+- Namespace: <namespace>
+- Model: <model-name>
+- Accelerator: <accelerator-type>
+- Gateway: http://<gateway-address>
+
+Files: <deployment-directory>/
+- helmfile.yaml
+- httproute.yaml
+- README.md
+- <deployment-name>/gaie-values.yaml
+- <deployment-name>/ms-values.yaml
+
+Monitoring:
+kubectl logs -l llm-d.ai/deployment=<deployment-name> -n <namespace>
+kubectl get pods,inferencepool,gateway,httproute -n <namespace>
 ```
-**Example**: [AMD GPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_amd.yaml)
 
-#### Intel XPU
-```yaml
-accelerator:
-  type: intel-i915  # or intel-xe for BMG
-  dra: true
-decode:
-  containers:
-    - image: ghcr.io/llm-d/llm-d-xpu:v0.5.0
-```
-**Example**: [Intel XPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_xpu.yaml)
+**Do NOT include**:
+- Questions or offers for assistance
+- Phrases like "Great!" or "Certainly"
+- Requests for feedback
 
-#### Intel Gaudi (HPU)
-```yaml
-accelerator:
-  type: habana
-  dra: true
-decode:
-  containers:
-    - image: ghcr.io/llm-d/llm-d-hpu:v0.5.0
-```
-**Example**: [Intel Gaudi values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values-hpu.yaml)
+---
 
-#### Google TPU
-```yaml
-accelerator:
-  type: tpu
-decode:
-  containers:
-    - image: ghcr.io/llm-d/llm-d-tpu:v0.5.0
-```
-**Example**: [TPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_tpu.yaml)
+## Quick Reference
 
-#### CPU
-```yaml
-accelerator:
-  type: cpu
-decode:
-  containers:
-    - image: ghcr.io/llm-d/llm-d-cpu:v0.5.0
-```
-**Example**: [CPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_cpu.yaml)
+### Image Selection by Accelerator
+| Accelerator | Image |
+|-------------|-------|
+| `nvidia` | `ghcr.io/llm-d/llm-d-cuda:v0.5.0` |
+| `amd` | `ghcr.io/llm-d/llm-d-rocm:v0.5.0` |
+| `intel-i915` / `intel-xe` | `ghcr.io/llm-d/llm-d-xpu:v0.5.0` |
+| `habana` | `ghcr.io/llm-d/llm-d-hpu:v0.5.0` |
+| `tpu` | `ghcr.io/llm-d/llm-d-tpu:v0.5.0` |
+| `cpu` | `ghcr.io/llm-d/llm-d-cpu:v0.5.0` |
 
-### Gateway-Specific Configurations
+**Reference Examples**:
+- [NVIDIA values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values.yaml)
+- [AMD values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_amd.yaml)
+- [Intel XPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_xpu.yaml)
+- [Intel Gaudi values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values-hpu.yaml)
+- [TPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_tpu.yaml)
+- [CPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_cpu.yaml)
 
-**Reference**: [Gateway Provider Setup](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/README.md)
+### Gateway Provider Options
+| Provider | Use Case | Configuration |
+|----------|----------|---------------|
+| `istio` | Default, full-featured | [Istio config](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/istio.yaml) |
+| `kgateway` | Lightweight, simple | [K-Gateway config](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/kgateway.yaml) |
+| `agentgateway` | Inference-optimized | [Agent Gateway config](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/agentgateway.yaml) |
+| `gke` | Google Cloud managed | [GKE config](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/gke.yaml) |
 
-#### Istio
-- Uses DestinationRule for connection pooling
-- Supports TLS configuration
-- Default choice for most deployments
-- **Configuration**: [Istio values](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/istio.yaml)
-
-#### K-Gateway
-- Lightweight alternative to Istio
-- Good for simpler deployments
-- Less operational overhead
-- **Configuration**: [K-Gateway values](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/kgateway.yaml)
-
-#### Agent Gateway
-- Specialized for inference workloads
-- Advanced routing capabilities
-- **Configuration**: [Agent Gateway values](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/agentgateway.yaml)
-
-#### GKE
-- Managed by Google Cloud
-- Automatic load balancer provisioning
-- Regional internal or external options
-- **Configuration**: [GKE values](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/gke.yaml)
-
-## Best Practices
-
-1. **Naming Conventions**:
-   - Use short, descriptive deployment names
-   - Avoid special characters except hyphens
-   - Keep namespace names under 20 characters
-
-2. **Resource Sizing**:
-   - Start with conservative resource limits
-   - Monitor actual usage and adjust
-   - Leave headroom for spikes
-
-3. **Model Storage**:
-   - Use appropriate storage class for your cloud provider
-   - Consider model size + 20% for overhead
-   - Enable caching for faster restarts
-
-4. **Monitoring**:
-   - Always enable Prometheus monitoring
-   - Set up alerts for key metrics
-   - Monitor GPU utilization
-
-5. **Security**:
-   - Use secrets for sensitive data
-   - Enable RBAC
-   - Consider network policies
-
-
+---
 
 ## Additional Resources
 
-- **llm-d Project**: [https://github.com/llm-d/llm-d](https://github.com/llm-d/llm-d)
-- **llm-d Documentation**: [https://llm-d.ai](https://llm-d.ai)
-- **Project Overview**: [PROJECT.md](https://github.com/llm-d/llm-d/blob/main/PROJECT.md)
-- **Well-lit Paths**: [guides/README.md](https://github.com/llm-d/llm-d/blob/main/guides/README.md)
-- **Quickstart Guide**: [guides/QUICKSTART.md](https://github.com/llm-d/llm-d/blob/main/guides/QUICKSTART.md)
-- **Gateway Customization**: [docs/customizing-your-gateway.md](https://github.com/llm-d/llm-d/blob/main/docs/customizing-your-gateway.md)
-- **Inference Gateway**: [https://github.com/kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension)
-- **vLLM Documentation**: [https://docs.vllm.ai](https://docs.vllm.ai)
-- **Gateway API Documentation**: [https://gateway-api.sigs.k8s.io](https://gateway-api.sigs.k8s.io)
+### Documentation
+- [llm-d Project](https://github.com/llm-d/llm-d)
+- [Project Overview](https://github.com/llm-d/llm-d/blob/main/PROJECT.md)
+- [Well-lit Paths](https://github.com/llm-d/llm-d/blob/main/guides/README.md)
+- [Quickstart Guide](https://github.com/llm-d/llm-d/blob/main/guides/QUICKSTART.md)
+- [Gateway Customization](https://github.com/llm-d/llm-d/blob/main/docs/customizing-your-gateway.md)
 
-## Helm Chart Repositories
+### External Resources
+- [Gateway API Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension)
+- [vLLM Documentation](https://docs.vllm.ai)
+- [Gateway API Documentation](https://gateway-api.sigs.k8s.io)
 
-The skill uses the following Helm chart repositories (no local clone required):
+### Helm Chart Repositories
+- **llm-d-infra**: `https://llm-d-incubation.github.io/llm-d-infra/` - Infrastructure components
+- **llm-d-modelservice**: `https://llm-d-incubation.github.io/llm-d-modelservice/` - Model server
+- **inferencepool**: `oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool` - Inference scheduler
 
-- **llm-d-infra**: `https://llm-d-incubation.github.io/llm-d-infra/`
-  - Infrastructure components (Gateway, monitoring)
-  - [Chart Documentation](https://github.com/llm-d-incubation/llm-d-infra)
-
-- **llm-d-modelservice**: `https://llm-d-incubation.github.io/llm-d-modelservice/`
-  - Model server deployment
-  - [Chart Documentation](https://github.com/llm-d-incubation/llm-d-modelservice)
-
-- **inferencepool**: `oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool`
-  - Inference scheduler (EPP)
-  - [Chart Documentation](https://github.com/kubernetes-sigs/gateway-api-inference-extension)
-
-## CRD Installation
-
-Before using this skill, ensure Gateway API and Inference Extension CRDs are installed:
-
+### CRD Installation Commands
 ```bash
-# Install Gateway API CRDs (v1.4.0)
+# Gateway API CRDs (v1.4.0)
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
 
-# Install Inference Extension CRDs (v1.3.0)
+# Inference Extension CRDs (v1.3.0)
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.0/install.yaml
 ```
-
-**Reference**: [Gateway Provider Prerequisites](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/README.md)
