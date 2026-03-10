@@ -55,12 +55,19 @@ Activate this skill when users need to:
 
 Before using this skill, ensure:
 
-1. **LLMD_PATH Environment Variable** - Point to your llm-d repository clone
-2. **Client Tools** - kubectl, helm, helmfile, git (see `guides/prereq/client-setup/README.md`)
+1. **Client Tools** - kubectl, helm, helmfile installed
+2. **Kubernetes Cluster** - Access to a Kubernetes cluster with sufficient resources
 3. **HuggingFace Token** - Secret `llm-d-hf-token` with key `HF_TOKEN` in target namespace
-4. **Gateway Provider** - Istio, K-Gateway, or Agent Gateway (see `guides/prereq/gateway-provider/README.md`)
-5. **Infrastructure** - Sufficient cluster resources (see `guides/prereq/infrastructure/README.md`)
+4. **Gateway Provider** - Istio, K-Gateway, Agent Gateway, or GKE Gateway installed
+5. **Gateway API CRDs** - Gateway API v1.4.0+ and Inference Extension v1.3.0+ CRDs installed
 6. **Target Directory** - A directory where deployment files will be generated
+
+**Reference Documentation:**
+- [llm-d Project](https://github.com/llm-d/llm-d)
+- [Client Setup Guide](https://github.com/llm-d/llm-d/blob/main/guides/prereq/client-setup/README.md)
+- [Gateway Provider Setup](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/README.md)
+- [Infrastructure Requirements](https://github.com/llm-d/llm-d/blob/main/guides/prereq/infrastructure/README.md)
+- [Well-lit Paths Overview](https://github.com/llm-d/llm-d/blob/main/guides/README.md)
 
 ## Deployment Workflow
 
@@ -72,7 +79,7 @@ Ask the user for the following information (provide intelligent defaults based o
 
 #### Required Information:
 1. **Deployment Name** - A unique name for this deployment (e.g., "custom-llama-deployment")
-2. **Target Namespace** - Kubernetes namespace for deployment (default: "llm-d-custom")
+2. **Target Namespace** - Kubernetes namespace for deployment (default: "llmd-custom")
 3. **Model Configuration**:
    - Model URI (HuggingFace model ID or path)
    - Model name
@@ -104,16 +111,68 @@ Ask the user for the following information (provide intelligent defaults based o
 
 ### Step 2: Generate helmfile.yaml
 
-Based on the gathered requirements, generate a `helmfile.yaml` file with the following structure:
+Based on the gathered requirements, generate a `helmfile.yaml` file with the following structure.
+
+**Note**: This helmfile uses Helm charts from the llm-d project repositories. No local clone is required.
+
+**Helm Chart Repositories:**
+- **llm-d-infra**: `https://llm-d-incubation.github.io/llm-d-infra/` - Infrastructure components (Gateway, monitoring)
+- **llm-d-modelservice**: `https://llm-d-incubation.github.io/llm-d-modelservice/` - Model server deployment
+- **inferencepool**: `oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool` - Inference scheduler
+
+**Reference**: [llm-d Helm Charts](https://github.com/llm-d/llm-d/tree/main/guides/inference-scheduling)
 
 ```yaml
+# Gateway provider configurations
+# For Istio example, see: https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/istio.yaml
+# For K-Gateway example, see: https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/kgateway.yaml
 environments:
-  <gateway-type>:
+  istio:
     values:
-      - ../prereq/gateway-provider/common-configurations/<gateway-type>.yaml
+      - provider:
+          name: istio
+          istio:
+            destinationRule:
+              enabled: true
+              connectionPool:
+                tcp:
+                  maxConnections: 100000
+                http:
+                  http1MaxPendingRequests: 100000
+                  http2MaxRequests: 100000
+                  maxRequestsPerConnection: 0
+              trafficPolicy:
+                connectionPool:
+                  tcp:
+                    maxConnections: 100000
+                  http:
+                    http1MaxPendingRequests: 100000
+                    http2MaxRequests: 100000
+                    maxRequestsPerConnection: 0
+      - gateway:
+          service:
+            type: LoadBalancer
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+  kgateway:
+    values:
+      - provider:
+          name: kgateway
+      - gateway:
+          service:
+            type: LoadBalancer
   default:
     values:
-      - ../prereq/gateway-provider/common-configurations/<gateway-type>.yaml
+      - provider:
+          name: istio
+      - gateway:
+          service:
+            type: LoadBalancer
 
 ---
 
@@ -148,6 +207,16 @@ releases:
       - {{ printf "infra-%s" $rn | quote }}
     values:
       - <deployment-name>/gaie-values.yaml
+    {{- if eq .Environment.Name "istio" }}
+      - provider:
+          name: {{ .Environment.Values.provider.name }}
+          istio:
+            {{ .Environment.Values.provider.istio | toYaml | nindent 12 }}
+      - provider:
+          istio:
+            destinationRule:
+              host: {{ printf "gaie-%s-epp.%s.svc.cluster.local" $rn $ns | quote }}
+    {{- end }}
     labels:
       kind: inference-stack
 
@@ -166,22 +235,37 @@ releases:
 ```
 
 **Key Configuration Points**:
-- Replace `<gateway-type>` with the selected gateway provider
 - Replace `<namespace>` with the target namespace
 - Replace `<deployment-name>` with the deployment name
-- Adjust chart versions to match current llm-d release
+- Gateway configurations are embedded (no external file dependencies)
+- Chart versions: infra v1.3.6, inferencepool v1.3.0, modelservice v0.4.5
+- Use `-e istio` or `-e kgateway` flag with helmfile to select gateway provider
+
+**Example helmfile commands:**
+```bash
+# Deploy with Istio (default)
+helmfile apply -n ${NAMESPACE}
+
+# Deploy with K-Gateway
+helmfile apply -e kgateway -n ${NAMESPACE}
+```
 
 ### Step 3: Generate Supporting Values Files
 
 Create a directory structure for the deployment:
 ```
-<deployment-name>/
+<deployment-directory>/
 ├── helmfile.yaml
 ├── httproute.yaml
 ├── README.md
-├── gaie-values.yaml
-└── ms-values.yaml
+└── <deployment-name>/
+    ├── gaie-values.yaml
+    └── ms-values.yaml
 ```
+
+**Reference Examples:**
+- [GAIE values example](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/gaie-inference-scheduling/values.yaml)
+- [Model server values example](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values.yaml)
 
 #### Generate gaie-values.yaml:
 
@@ -347,43 +431,7 @@ spec:
 ```
 
 ### Step 5: Generate README.md
-
 Create a comprehensive README documenting the deployment:
-
-```markdown
-# <Deployment Name> - llm-d Deployment
-
-## Overview
-
-This deployment was generated using the llm-d general deployment skill. It configures llm-d to serve the <model-name> model on <accelerator-type> hardware.
-
-## Configuration Summary
-
-- **Deployment Name**: <deployment-name>
-- **Namespace**: <namespace>
-- **Model**: <model-name> (<model-uri>)
-- **Hardware**: <accelerator-type>
-- **Tensor Parallelism**: <tensor-parallelism>
-- **Replicas**: <replicas>
-- **Gateway Provider**: <gateway-type>
-- **Prefill/Decode Disaggregation**: <enabled/disabled>
-
-## Prerequisites
-
-Before deploying, ensure:
-
-1. Kubernetes cluster with sufficient resources
-2. Gateway provider (<gateway-type>) installed and configured
-3. HuggingFace token secret created:
-   ```bash
-   kubectl create secret generic llm-d-hf-token \
-     --from-literal=HF_TOKEN=<your-token> \
-     -n <namespace>
-   ```
-4. Namespace created:
-   ```bash
-   kubectl create namespace <namespace>
-   ```
 
 ## Deployment Instructions
 
@@ -442,12 +490,6 @@ curl -X POST http://<gateway-address>/v1/completions \
   }'
 ```
 
-## Resource Requirements
-
-- **GPUs**: <total-gpus> x <accelerator-type>
-- **CPU**: <total-cpu>
-- **Memory**: <total-memory>
-- **Storage**: <model-size>
 
 ## Customization
 
@@ -502,7 +544,7 @@ kubectl delete httproute <deployment-name> -n ${NAMESPACE}
 - [llm-d Documentation](https://llm-d.ai)
 - [vLLM Documentation](https://docs.vllm.ai)
 - [Gateway API Documentation](https://gateway-api.sigs.k8s.io)
-```
+
 
 ### Step 5: Create Deployment Directory and Generate Files
 
@@ -767,20 +809,16 @@ After successful deployment, provide the user with:
 
 1. **Deployment location**: Path to the deployment directory
 2. **Access information**: Gateway address and endpoints
-3. **Next steps**: Link to HELPFILE.md for detailed usage
+3. **Next steps**: Link to README.md for detailed usage
 4. **Monitoring**: How to access metrics and logs
 5. **Troubleshooting**: Common issues and solutions
 
-### Step 6: Create Deployment Directory and Files
-
-1. Create the deployment directory structure
-2. Write all generated files to the directory
-3. Inform the user of the created files and their locations
-4. Provide next steps for deployment
 
 ## Configuration Guidelines
 
 ### Hardware-Specific Configurations
+
+**Reference**: [llm-d Accelerator Documentation](https://github.com/llm-d/llm-d/blob/main/docs/accelerators/README.md)
 
 #### NVIDIA GPUs
 ```yaml
@@ -790,6 +828,7 @@ decode:
   containers:
     - image: ghcr.io/llm-d/llm-d-cuda:v0.5.0
 ```
+**Example**: [NVIDIA GPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values.yaml)
 
 #### AMD GPUs
 ```yaml
@@ -799,6 +838,7 @@ decode:
   containers:
     - image: ghcr.io/llm-d/llm-d-rocm:v0.5.0
 ```
+**Example**: [AMD GPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_amd.yaml)
 
 #### Intel XPU
 ```yaml
@@ -809,6 +849,7 @@ decode:
   containers:
     - image: ghcr.io/llm-d/llm-d-xpu:v0.5.0
 ```
+**Example**: [Intel XPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_xpu.yaml)
 
 #### Intel Gaudi (HPU)
 ```yaml
@@ -819,6 +860,7 @@ decode:
   containers:
     - image: ghcr.io/llm-d/llm-d-hpu:v0.5.0
 ```
+**Example**: [Intel Gaudi values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values-hpu.yaml)
 
 #### Google TPU
 ```yaml
@@ -828,6 +870,7 @@ decode:
   containers:
     - image: ghcr.io/llm-d/llm-d-tpu:v0.5.0
 ```
+**Example**: [TPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_tpu.yaml)
 
 #### CPU
 ```yaml
@@ -837,27 +880,34 @@ decode:
   containers:
     - image: ghcr.io/llm-d/llm-d-cpu:v0.5.0
 ```
+**Example**: [CPU values](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values_cpu.yaml)
 
 ### Gateway-Specific Configurations
+
+**Reference**: [Gateway Provider Setup](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/README.md)
 
 #### Istio
 - Uses DestinationRule for connection pooling
 - Supports TLS configuration
 - Default choice for most deployments
+- **Configuration**: [Istio values](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/istio.yaml)
 
 #### K-Gateway
 - Lightweight alternative to Istio
 - Good for simpler deployments
 - Less operational overhead
+- **Configuration**: [K-Gateway values](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/kgateway.yaml)
 
 #### Agent Gateway
 - Specialized for inference workloads
 - Advanced routing capabilities
+- **Configuration**: [Agent Gateway values](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/agentgateway.yaml)
 
 #### GKE
 - Managed by Google Cloud
 - Automatic load balancer provisioning
 - Regional internal or external options
+- **Configuration**: [GKE values](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/common-configurations/gke.yaml)
 
 ## Best Practices
 
@@ -886,37 +936,46 @@ decode:
    - Enable RBAC
    - Consider network policies
 
-## Common Issues and Solutions
 
-### Issue: Pods stuck in Pending
-**Solution**: Check node resources and GPU availability
+
+## Additional Resources
+
+- **llm-d Project**: [https://github.com/llm-d/llm-d](https://github.com/llm-d/llm-d)
+- **llm-d Documentation**: [https://llm-d.ai](https://llm-d.ai)
+- **Project Overview**: [PROJECT.md](https://github.com/llm-d/llm-d/blob/main/PROJECT.md)
+- **Well-lit Paths**: [guides/README.md](https://github.com/llm-d/llm-d/blob/main/guides/README.md)
+- **Quickstart Guide**: [guides/QUICKSTART.md](https://github.com/llm-d/llm-d/blob/main/guides/QUICKSTART.md)
+- **Gateway Customization**: [docs/customizing-your-gateway.md](https://github.com/llm-d/llm-d/blob/main/docs/customizing-your-gateway.md)
+- **Inference Gateway**: [https://github.com/kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension)
+- **vLLM Documentation**: [https://docs.vllm.ai](https://docs.vllm.ai)
+- **Gateway API Documentation**: [https://gateway-api.sigs.k8s.io](https://gateway-api.sigs.k8s.io)
+
+## Helm Chart Repositories
+
+The skill uses the following Helm chart repositories (no local clone required):
+
+- **llm-d-infra**: `https://llm-d-incubation.github.io/llm-d-infra/`
+  - Infrastructure components (Gateway, monitoring)
+  - [Chart Documentation](https://github.com/llm-d-incubation/llm-d-infra)
+
+- **llm-d-modelservice**: `https://llm-d-incubation.github.io/llm-d-modelservice/`
+  - Model server deployment
+  - [Chart Documentation](https://github.com/llm-d-incubation/llm-d-modelservice)
+
+- **inferencepool**: `oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool`
+  - Inference scheduler (EPP)
+  - [Chart Documentation](https://github.com/kubernetes-sigs/gateway-api-inference-extension)
+
+## CRD Installation
+
+Before using this skill, ensure Gateway API and Inference Extension CRDs are installed:
+
 ```bash
-kubectl describe nodes | grep -A 5 "Allocated resources"
+# Install Gateway API CRDs (v1.4.0)
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+
+# Install Inference Extension CRDs (v1.3.0)
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.0/install.yaml
 ```
 
-### Issue: Model download fails
-**Solution**: Verify HuggingFace token and network connectivity
-```bash
-kubectl logs <pod-name> -n ${NAMESPACE} | grep -i "download\|token"
-```
-
-### Issue: Gateway not routing traffic
-**Solution**: Verify HTTPRoute and Gateway configuration
-```bash
-kubectl describe httproute -n ${NAMESPACE}
-kubectl describe gateway -n ${NAMESPACE}
-```
-
-### Issue: Out of memory errors
-**Solution**: Increase memory limits or reduce GPU memory utilization
-```yaml
-args:
-  - "--gpu-memory-utilization=0.85"  # Reduce from 0.95
-```
-
-# Additional Resources
-
-- **llm-d Project**: [PROJECT.md](../../PROJECT.md)
-- **Well-lit Paths**: [guides/README.md](../../guides/README.md)
-- **Gateway Customization**: [docs/customizing-your-gateway.md](../../docs/customizing-your-gateway.md)
-- **Monitoring Setup**: [docs/monitoring/README.md](../../docs/monitoring/README.md)
+**Reference**: [Gateway Provider Prerequisites](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/README.md)
