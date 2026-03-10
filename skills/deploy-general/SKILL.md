@@ -744,14 +744,14 @@ echo "Gateway Address: $(kubectl get gateway -n ${NAMESPACE} -o jsonpath='{.item
 
 **Check each criterion**:
 
-1. ✅ All pods show `Running` status with `Ready` column showing `1/1` or `2/2`
-2. ✅ InferencePool shows `Ready: True` condition
-3. ✅ Gateway shows `Programmed: True` and `Accepted: True` conditions
-4. ✅ HTTPRoute shows `Accepted: True` condition
-5. ✅ Model loading logs show "vLLM API server started"
-6. ✅ Health endpoint (`curl http://${GATEWAY_ADDRESS}/health`) returns 200 OK
-7. ✅ Models endpoint (`curl http://${GATEWAY_ADDRESS}/v1/models`) lists the deployed model
-8. ✅ Inference test returns valid JSON completion response
+1. All pods show `Running` status with `Ready` column showing `1/1` or `2/2`
+2. InferencePool shows `Ready: True` condition
+3. Gateway shows `Programmed: True` and `Accepted: True` conditions
+4. HTTPRoute shows `Accepted: True` condition
+5. Model loading logs show "vLLM API server started"
+6. Health endpoint (`curl http://${GATEWAY_ADDRESS}/health`) returns 200 OK
+7. Models endpoint (`curl http://${GATEWAY_ADDRESS}/v1/models`) lists the deployed model
+8. Inference test returns valid JSON completion response
 
 **IF ANY CRITERION FAILS**:
 - DO NOT use `attempt_completion`
@@ -761,36 +761,7 @@ echo "Gateway Address: $(kubectl get gateway -n ${NAMESPACE} -o jsonpath='{.item
 
 **ONLY use `attempt_completion` when ALL 8 criteria pass.**
 
-### Step 7: Provide Deployment Summary
-
-**After ALL 8 success criteria pass**, use `attempt_completion` with this format:
-
-```
-Deployment complete.
-
-Configuration:
-- Name: <deployment-name>
-- Namespace: <namespace>
-- Model: <model-name>
-- Accelerator: <accelerator-type>
-- Gateway: http://<gateway-address>
-
-Files: <deployment-directory>/
-- helmfile.yaml
-- httproute.yaml
-- README.md
-- <deployment-name>/gaie-values.yaml
-- <deployment-name>/ms-values.yaml
-
-Monitoring:
-kubectl logs -l llm-d.ai/deployment=<deployment-name> -n <namespace>
-kubectl get pods,inferencepool,gateway,httproute -n <namespace>
-```
-
-**Do NOT include**:
-- Questions or offers for assistance
-- Phrases like "Great!" or "Certainly"
-- Requests for feedback
+## Step 7: Provide Deployment Summary
 
 ---
 
