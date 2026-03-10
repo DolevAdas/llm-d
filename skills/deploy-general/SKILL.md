@@ -430,121 +430,6 @@ spec:
             value: /
 ```
 
-### Step 5: Generate README.md
-Create a comprehensive README documenting the deployment:
-
-## Deployment Instructions
-
-### 1. Navigate to deployment directory
-
-```bash
-cd <deployment-directory>
-```
-
-### 2. Deploy using helmfile
-
-```bash
-export NAMESPACE=<namespace>
-helmfile apply -n ${NAMESPACE}
-```
-
-### 3. Apply HTTPRoute
-
-```bash
-kubectl apply -f httproute.yaml -n ${NAMESPACE}
-```
-
-### 4. Verify deployment
-
-```bash
-# Check pods
-kubectl get pods -n ${NAMESPACE}
-
-# Check InferencePool
-kubectl get inferencepool -n ${NAMESPACE}
-
-# Check Gateway
-kubectl get gateway -n ${NAMESPACE}
-
-# Check HTTPRoute
-kubectl get httproute -n ${NAMESPACE}
-```
-
-## Testing the Deployment
-
-### Get Gateway Address
-
-```bash
-kubectl get gateway -n ${NAMESPACE} -o jsonpath='{.items[0].status.addresses[0].value}'
-```
-
-### Test Inference
-
-```bash
-curl -X POST http://<gateway-address>/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "<model-name>",
-    "prompt": "Hello, how are you?",
-    "max_tokens": 50
-  }'
-```
-
-
-## Customization
-
-To modify this deployment:
-
-1. Edit `ms-values.yaml` for model server configuration
-2. Edit `gaie-values.yaml` for inference scheduler configuration
-3. Edit `helmfile.yaml` for overall deployment structure
-4. Reapply: `helmfile apply -n ${NAMESPACE}`
-
-## Monitoring
-
-<If monitoring enabled>
-Prometheus metrics are exposed at:
-- vLLM metrics: `http://<pod-ip>:8000/metrics`
-- Inference scheduler metrics: `http://<epp-pod-ip>:9002/metrics`
-
-## Troubleshooting
-
-### Pods not starting
-
-```bash
-kubectl describe pod <pod-name> -n ${NAMESPACE}
-kubectl logs <pod-name> -n ${NAMESPACE}
-```
-
-### Model not loading
-
-Check vLLM logs:
-```bash
-kubectl logs -l llm-d.ai/deployment=<deployment-name> -n ${NAMESPACE}
-```
-
-### Gateway not routing
-
-```bash
-kubectl describe gateway -n ${NAMESPACE}
-kubectl describe httproute -n ${NAMESPACE}
-```
-
-## Cleanup
-
-To remove this deployment:
-
-```bash
-helmfile destroy -n ${NAMESPACE}
-kubectl delete httproute <deployment-name> -n ${NAMESPACE}
-```
-
-## Additional Resources
-
-- [llm-d Documentation](https://llm-d.ai)
-- [vLLM Documentation](https://docs.vllm.ai)
-- [Gateway API Documentation](https://gateway-api.sigs.k8s.io)
-
 
 ### Step 5: Create Deployment Directory and Generate Files
 
@@ -580,16 +465,21 @@ Write all the generated configuration files to the deployment directory:
    - Location: `<deployment-directory>/httproute.yaml`
    - Content: The generated HTTPRoute configuration from Step 4
 
-5. **Write HELPFILE.md**:
-   - Location: `<deployment-directory>/HELPFILE.md`
-   - Content: The generated helpfile documentation from Step 5
+5. **Write README.md**:
+   - Location: `<deployment-directory>/README.md`
+   - Content: Concise deployment documentation including:
+     - Configuration summary (model, hardware, namespace)
+     - Quick deployment commands
+     - Verification steps
+     - Gateway address retrieval
+     - Basic inference test example
 
 **Inform the user:**
 ```
 Created deployment files in <deployment-directory>:
 ├── helmfile.yaml
 ├── httproute.yaml
-├── HELPFILE.md
+├── README.md
 └── <deployment-name>/
     ├── gaie-values.yaml
     └── ms-values.yaml
