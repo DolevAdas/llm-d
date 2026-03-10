@@ -75,43 +75,66 @@ When a user requests a custom llm-d deployment, follow this workflow:
 
 ### Step 1: Gather Deployment Requirements
 
-Ask the user for the following information (provide intelligent defaults based on common configurations):
+Ask the user for the following information. Use `ask_followup_question` if any required field is missing.
+
+**VALIDATION RULE**: Before proceeding to Step 2, verify ALL required fields are provided. If any are missing, use `ask_followup_question` to gather them.
 
 #### Required Information:
 1. **Deployment Name** - A unique name for this deployment (e.g., "custom-llama-deployment")
+   - Must be lowercase, alphanumeric with hyphens only
+   - Max 20 characters
 2. **Target Namespace** - Kubernetes namespace for deployment (default: "llmd-custom")
 3. **Model Configuration**:
-   - Model URI (HuggingFace model ID or path)
-   - Model name
-   - Model size (storage requirement)
+   - Model URI (HuggingFace model ID or path, e.g., "hf://Qwen/Qwen3-32B")
+   - Model name (e.g., "Qwen/Qwen3-32B")
+   - Model size (storage requirement, e.g., "80Gi")
 4. **Hardware Configuration**:
-   - Accelerator type (nvidia, amd, xpu, hpu, tpu, cpu)
-   - Number of GPUs per replica (tensor parallelism)
-   - Number of replicas (data parallelism)
+   - Accelerator type: `nvidia` | `amd` | `intel-i915` | `intel-xe` | `habana` | `tpu` | `cpu`
+   - Number of GPUs per replica (tensor parallelism, default: 2)
+   - Number of replicas (data parallelism, default: 8)
 5. **Gateway Provider**:
-   - Gateway type (istio, kgateway, agentgateway, gke)
+   - Gateway type: `istio` (default) | `kgateway` | `agentgateway` | `gke`
 
-#### Optional Information:
+#### Optional Information (with defaults):
 1. **Advanced vLLM Settings**:
-   - GPU memory utilization (default: 0.95)
-   - Additional vLLM arguments
-   - Custom container image
+   - GPU memory utilization: `0.95` (range: 0.0-1.0)
+   - Additional vLLM arguments: `[]` (e.g., ["--max-model-len=4096"])
+   - Custom container image: Auto-selected based on accelerator type
 2. **Resource Limits**:
-   - CPU limits/requests
-   - Memory limits/requests
+   - CPU limits/requests: `32` cores (adjust based on model size)
+   - Memory limits/requests: `100Gi` (adjust based on model size)
 3. **Prefill/Decode Configuration**:
-   - Enable disaggregation (yes/no)
-   - Prefill replicas
-   - Decode replicas
+   - Enable disaggregation: `false` (set true for PD separation)
+   - Prefill replicas: `2` (if disaggregation enabled)
+   - Decode replicas: `8` (if disaggregation enabled)
 4. **Storage Configuration**:
-   - Storage class
-   - PVC size
+   - Storage class: Cluster default
+   - PVC size: Auto-calculated from model size
 5. **Monitoring**:
-   - Enable Prometheus monitoring (default: true)
+   - Enable Prometheus monitoring: `true`
+
+**Placeholder Value Reference Table**:
+| Placeholder | Valid Values | Default |
+|-------------|--------------|---------|
+| `<monitoring-enabled>` | `true` \| `false` | `true` |
+| `<accelerator-type>` | `nvidia` \| `amd` \| `intel-i915` \| `intel-xe` \| `habana` \| `tpu` \| `cpu` | `nvidia` |
+| `<gpu-memory-utilization>` | `0.0` to `1.0` | `0.95` |
+| `<tensor-parallelism>` | Integer ≥ 1 | `2` |
+| `<replicas>` | Integer ≥ 1 | `8` |
+| `<cpu-limit>` | String (e.g., `32`) | `32` |
+| `<memory-limit>` | String (e.g., `100Gi`) | `100Gi` |
+| `<shm-size>` | String (e.g., `20Gi`) | `20Gi` |
 
 ### Step 2: Generate helmfile.yaml
 
-Based on the gathered requirements, generate a `helmfile.yaml` file with the following structure.
+**IMPORTANT - Placeholder Replacement**: Before writing any files, replace ALL placeholders with actual values:
+- `<namespace>` → User-provided namespace
+- `<deployment-name>` → User-provided deployment name
+- `<model-uri>` → User-provided model URI
+- `<model-name>` → User-provided model name
+- All other `<placeholders>` → Corresponding values from user input or defaults
+
+Based on the gathered requirements, generate a `helmfile.yaml` file with Go template syntax.
 
 **Note**: This helmfile uses Helm charts from the llm-d project repositories. No local clone is required.
 
@@ -269,6 +292,8 @@ Create a directory structure for the deployment:
 
 #### Generate gaie-values.yaml:
 
+**CRITICAL**: The `matchLabels` in this file MUST exactly match the `labels` in ms-values.yaml. Mismatched labels will cause deployment failure.
+
 ```yaml
 inferenceExtension:
   replicas: 1
@@ -284,9 +309,9 @@ inferenceExtension:
   monitoring:
     interval: "10s"
     secret:
-      name: <deployment-name>-gateway-sa-metrics-reader-secret
+      name: <deployment-name>-gateway-sa-metrics-reader-secret  # Replace with actual deployment name
     prometheus:
-      enabled: <monitoring-enabled>
+      enabled: true  # Replace <monitoring-enabled> with true or false
       auth:
         enabled: true
 inferencePool:
@@ -296,65 +321,68 @@ inferencePool:
   modelServers:
     matchLabels:
       llm-d.ai/inference-serving: "true"
-      llm-d.ai/deployment: "<deployment-name>"
+      llm-d.ai/deployment: "<deployment-name>"  # MUST match ms-values.yaml labels
 ```
 
 #### Generate ms-values.yaml:
 
+**CRITICAL**: The `labels` in this file MUST exactly match the `matchLabels` in gaie-values.yaml.
+
 ```yaml
-multinode: <true if tensor parallelism > 1>
+multinode: false  # Set to true if tensor parallelism > 1
 
 modelArtifacts:
-  uri: "<model-uri>"
-  name: "<model-name>"
-  size: <model-size>
+  uri: "hf://Qwen/Qwen3-32B"  # Replace with actual model URI
+  name: "Qwen/Qwen3-32B"  # Replace with actual model name
+  size: 80Gi  # Replace with actual model size
   authSecretName: "llm-d-hf-token"
   labels:
     llm-d.ai/inference-serving: "true"
-    llm-d.ai/deployment: "<deployment-name>"
-    llm-d.ai/accelerator-variant: "<accelerator-variant>"
-    llm-d.ai/accelerator-vendor: "<accelerator-vendor>"
-    llm-d.ai/model: "<model-name>"
+    llm-d.ai/deployment: "custom-deployment"  # MUST match gaie-values.yaml matchLabels
+    llm-d.ai/accelerator-variant: "gpu"  # "gpu" for nvidia/amd, "xpu" for intel, "hpu" for habana, "tpu" for tpu, "cpu" for cpu
+    llm-d.ai/accelerator-vendor: "nvidia"  # "nvidia", "amd", "intel", "habana", "google", "cpu"
+    llm-d.ai/model: "Qwen3-32B"  # Replace with model name (without org prefix)
 
 routing:
   proxy:
-    enabled: <true if prefill/decode disaggregation>
+    enabled: false  # Set to true only if prefill/decode disaggregation is enabled
     targetPort: 8000
 
 accelerator:
-  type: <accelerator-type>
+  type: nvidia  # Replace with: nvidia | amd | intel-i915 | intel-xe | habana | tpu | cpu
 
 decode:
   create: true
   parallelism:
-    tensor: <tensor-parallelism>
+    tensor: 2  # Replace with actual tensor parallelism value
     data: 1
-  replicas: <replicas>
+  replicas: 8  # Replace with actual number of replicas
   monitoring:
     podmonitor:
-      enabled: <monitoring-enabled>
+      enabled: true  # Replace with true or false
       portName: "vllm"
       path: "/metrics"
       interval: "30s"
   containers:
     - name: "vllm"
-      image: <vllm-image>
+      image: ghcr.io/llm-d/llm-d-cuda:v0.5.0  # Auto-select based on accelerator: cuda|rocm|xpu|hpu|tpu|cpu
       modelCommand: vllmServe
       args:
         - "--disable-uvicorn-access-log"
-        - "--gpu-memory-utilization=<gpu-memory-utilization>"
-        <additional-args>
+        - "--gpu-memory-utilization=0.95"  # Replace with actual value (0.0-1.0)
+        # Add additional args as needed, e.g.:
+        # - "--max-model-len=4096"
       ports:
         - containerPort: 8000
           name: vllm
           protocol: TCP
       resources:
         limits:
-          cpu: '<cpu-limit>'
-          memory: <memory-limit>
+          cpu: '32'  # Replace with actual CPU limit
+          memory: 100Gi  # Replace with actual memory limit
         requests:
-          cpu: '<cpu-request>'
-          memory: <memory-request>
+          cpu: '32'  # Replace with actual CPU request
+          memory: 100Gi  # Replace with actual memory request
       mountModelVolume: true
       volumeMounts:
         - name: metrics-volume
@@ -393,12 +421,20 @@ decode:
     - name: shm
       emptyDir:
         medium: Memory
-        sizeLimit: <shm-size>
+        sizeLimit: 20Gi  # Replace with actual shm size (typically 20-40Gi)
 
 prefill:
-  create: <true if prefill/decode disaggregation>
-  <prefill-configuration if enabled>
+  create: false  # Set to true only if prefill/decode disaggregation is enabled
+  # If enabled, copy decode configuration and adjust replicas/resources as needed
 ```
+
+**Image Selection by Accelerator Type**:
+- `nvidia` → `ghcr.io/llm-d/llm-d-cuda:v0.5.0`
+- `amd` → `ghcr.io/llm-d/llm-d-rocm:v0.5.0`
+- `intel-i915` or `intel-xe` → `ghcr.io/llm-d/llm-d-xpu:v0.5.0`
+- `habana` → `ghcr.io/llm-d/llm-d-hpu:v0.5.0`
+- `tpu` → `ghcr.io/llm-d/llm-d-tpu:v0.5.0`
+- `cpu` → `ghcr.io/llm-d/llm-d-cpu:v0.5.0`
 
 ### Step 4: Generate httproute.yaml
 
@@ -433,48 +469,64 @@ spec:
 
 ### Step 5: Create Deployment Directory and Generate Files
 
-Before deployment, create the directory structure and write all configuration files:
+**TOOL USAGE INSTRUCTIONS**: Follow these exact steps using the specified tools.
 
 #### 5.1 Create Deployment Directory Structure
 
-```bash
-# Create main deployment directory
-mkdir -p <deployment-directory>
+Use `execute_command` to create the directory structure:
 
-# Create subdirectories for values files
+```bash
+# Create main deployment directory and subdirectories
 mkdir -p <deployment-directory>/<deployment-name>
+```
+
+**Example command**:
+```bash
+mkdir -p ./custom-llama-deploy/custom-llama
 ```
 
 #### 5.2 Write Generated Files
 
-Write all the generated configuration files to the deployment directory:
+Use `write_to_file` tool to create each NEW configuration file. These are NEW files, not modifications to existing files.
+
+**CRITICAL - Label Validation**: Before writing files, verify that:
+- Labels in gaie-values.yaml `matchLabels` section
+- EXACTLY MATCH labels in ms-values.yaml `modelArtifacts.labels` section
+- Specifically: `llm-d.ai/deployment` value must be identical in both files
+
+**Write files in this order**:
 
 1. **Write helmfile.yaml**:
-   - Location: `<deployment-directory>/helmfile.yaml`
-   - Content: The generated helmfile configuration from Step 2
+   - Tool: `write_to_file`
+   - Path: `<deployment-directory>/helmfile.yaml`
+   - Content: The generated helmfile configuration from Step 2 with ALL placeholders replaced
 
 2. **Write gaie-values.yaml**:
-   - Location: `<deployment-directory>/<deployment-name>/gaie-values.yaml`
-   - Content: The generated GAIE configuration from Step 3
+   - Tool: `write_to_file`
+   - Path: `<deployment-directory>/<deployment-name>/gaie-values.yaml`
+   - Content: The generated GAIE configuration from Step 3 with ALL placeholders replaced
 
 3. **Write ms-values.yaml**:
-   - Location: `<deployment-directory>/<deployment-name>/ms-values.yaml`
-   - Content: The generated model server configuration from Step 3
+   - Tool: `write_to_file`
+   - Path: `<deployment-directory>/<deployment-name>/ms-values.yaml`
+   - Content: The generated model server configuration from Step 3 with ALL placeholders replaced
 
 4. **Write httproute.yaml**:
-   - Location: `<deployment-directory>/httproute.yaml`
-   - Content: The generated HTTPRoute configuration from Step 4
+   - Tool: `write_to_file`
+   - Path: `<deployment-directory>/httproute.yaml`
+   - Content: The generated HTTPRoute configuration from Step 4 with ALL placeholders replaced
 
 5. **Write README.md**:
-   - Location: `<deployment-directory>/README.md`
+   - Tool: `write_to_file`
+   - Path: `<deployment-directory>/README.md`
    - Content: Concise deployment documentation including:
      - Configuration summary (model, hardware, namespace)
-     - Quick deployment commands
+     - Quick deployment commands with actual namespace and deployment name
      - Verification steps
-     - Gateway address retrieval
-     - Basic inference test example
+     - Gateway address retrieval command
+     - Basic inference test example with actual model name
 
-**Inform the user:**
+**After writing all files, inform the user**:
 ```
 Created deployment files in <deployment-directory>:
 ├── helmfile.yaml
@@ -483,6 +535,9 @@ Created deployment files in <deployment-directory>:
 └── <deployment-name>/
     ├── gaie-values.yaml
     └── ms-values.yaml
+
+All placeholders have been replaced with actual values.
+Ready for deployment.
 ```
 
 ### Step 6: Execute Deployment
@@ -650,31 +705,25 @@ curl -X POST http://${GATEWAY_ADDRESS}/v1/completions \
 }
 ```
 
-#### 6.8 Common Deployment Issues and Fixes
+#### 6.9 Common Deployment Issues and Fixes
 
-| Issue | Diagnosis | Fix |
-|-------|-----------|-----|
-| Pods stuck in Pending | `kubectl describe pod <pod-name> -n ${NAMESPACE}` | Check node resources, GPU availability, and node selectors |
-| ImagePullBackOff | `kubectl describe pod <pod-name> -n ${NAMESPACE}` | Verify image name, tag, and registry credentials |
-| CrashLoopBackOff | `kubectl logs <pod-name> -n ${NAMESPACE}` | Check vLLM logs for errors, verify model URI and token |
-| Model download fails | `kubectl logs <pod-name> -n ${NAMESPACE} \| grep download` | Verify HuggingFace token and network connectivity |
-| Gateway not routing | `kubectl describe httproute -n ${NAMESPACE}` | Verify Gateway and InferencePool are ready |
-| Out of memory | `kubectl logs <pod-name> -n ${NAMESPACE} \| grep -i memory` | Reduce GPU memory utilization or increase memory limits |
+**ERROR HANDLING INSTRUCTIONS**: When encountering these issues, take the specified action.
 
-#### 6.9 Deployment Success Criteria
+| Issue | Diagnosis Command | Agent Action |
+|-------|------------------|--------------|
+| Pods stuck in Pending | `kubectl describe pod <pod-name> -n ${NAMESPACE}` | Check events for "Insufficient" messages. If insufficient GPU/CPU/memory, use `ask_followup_question` to inform user about resource constraints and ask if they want to adjust requirements or add nodes. |
+| ImagePullBackOff | `kubectl describe pod <pod-name> -n ${NAMESPACE}` | Check image name and tag. If image doesn't exist, verify accelerator type selection. Use `ask_followup_question` to confirm correct accelerator type. |
+| CrashLoopBackOff | `kubectl logs <pod-name> -n ${NAMESPACE}` | Check logs for error message. If "Out of memory", suggest reducing gpu-memory-utilization. If "model not found", verify model URI. Use `ask_followup_question` with specific error and suggested fix. |
+| Model download fails | `kubectl logs <pod-name> -n ${NAMESPACE}` | Check for "401 Unauthorized" or "403 Forbidden". If found, HuggingFace token is invalid/missing. STOP and use `ask_followup_question` to request token verification. |
+| Gateway not routing | `kubectl describe httproute -n ${NAMESPACE}` | Check HTTPRoute conditions. If "Backend not found", InferencePool may not be ready. Wait 30s and recheck. If still failing, verify label matching between gaie-values.yaml and ms-values.yaml. |
+| Out of memory (OOM) | `kubectl logs <pod-name> -n ${NAMESPACE}` | If OOM error found, calculate: current_memory * 1.5 = new_memory. Use `ask_followup_question` to suggest increasing memory limits or reducing gpu-memory-utilization to 0.85. |
+| InferencePool not Ready | `kubectl describe inferencepool -n ${NAMESPACE}` | Check conditions. If "No backends available", model servers may not have matching labels. Verify labels match between gaie-values.yaml and ms-values.yaml. If mismatch found, STOP and inform user of label mismatch issue. |
 
-The deployment is successful when:
+#### 6.10 Deployment Success Criteria
 
-1. ✅ All pods are in `Running` state with `Ready` status
-2. ✅ InferencePool shows `Ready` condition
-3. ✅ Gateway shows `Programmed` and `Accepted` conditions
-4. ✅ HTTPRoute shows `Accepted` condition
-5. ✅ Model loading logs show successful completion
-6. ✅ Health endpoint returns 200 OK
-7. ✅ Models endpoint lists the deployed model
-8. ✅ Inference test returns valid completion
+**MANDATORY**: Before using `attempt_completion`, verify ALL criteria are met.
 
-**Final validation command:**
+Use `execute_command` to run final validation:
 
 ```bash
 echo "=== Deployment Validation ==="
@@ -692,6 +741,74 @@ kubectl get httproute -n ${NAMESPACE}
 echo ""
 echo "Gateway Address: $(kubectl get gateway -n ${NAMESPACE} -o jsonpath='{.items[0].status.addresses[0].value}')"
 ```
+
+**Check each criterion**:
+
+1. ✅ All pods show `Running` status with `Ready` column showing `1/1` or `2/2`
+2. ✅ InferencePool shows `Ready: True` condition
+3. ✅ Gateway shows `Programmed: True` and `Accepted: True` conditions
+4. ✅ HTTPRoute shows `Accepted: True` condition
+### Step 7: Provide Deployment Summary
+
+After successful deployment validation (all 8 criteria in 6.10 pass), provide the user with a summary.
+
+**Use `attempt_completion` with the following information**:
+
+```
+Deployment Summary:
+- Deployment Name: <deployment-name>
+- Namespace: <namespace>
+- Model: <model-name>
+- Accelerator: <accelerator-type>
+- Gateway Address: <gateway-address>
+
+Access Information:
+- Health Check: curl http://<gateway-address>/health
+- Models List: curl http://<gateway-address>/v1/models
+- Inference: curl -X POST http://<gateway-address>/v1/completions -H "Content-Type: application/json" -d '{"model":"<model-name>","prompt":"test","max_tokens":50}'
+
+Deployment Files Location: <deployment-directory>
+
+Monitoring:
+- View logs: kubectl logs -l llm-d.ai/deployment=<deployment-name> -n <namespace>
+- Check status: kubectl get pods,inferencepool,gateway,httproute -n <namespace>
+
+Next Steps:
+- Review README.md in deployment directory for detailed usage
+- Set up monitoring dashboards if needed
+- Configure autoscaling if required
+```
+
+**Do NOT include**:
+- Questions or offers for further assistance
+- Conversational phrases like "Great!" or "Certainly"
+- Requests for feedback
+
+**Example attempt_completion**:
+```
+Deployment complete.
+
+- Deployment: custom-llama
+- Namespace: llmd-custom
+- Model: Qwen/Qwen3-32B
+- Gateway: http://34.123.45.67
+
+Files created in ./custom-llama-deploy/
+All validation checks passed.
+```
+
+5. ✅ Model loading logs show "vLLM API server started"
+6. ✅ Health endpoint (`curl http://${GATEWAY_ADDRESS}/health`) returns 200 OK
+7. ✅ Models endpoint (`curl http://${GATEWAY_ADDRESS}/v1/models`) lists the deployed model
+8. ✅ Inference test returns valid JSON completion response
+
+**IF ANY CRITERION FAILS**:
+- DO NOT use `attempt_completion`
+- Diagnose the failure using section 6.9
+- Fix the issue
+- Re-validate all criteria
+
+**ONLY use `attempt_completion` when ALL 8 criteria pass.**
 
 ### Step 7: Provide Deployment Summary
 
