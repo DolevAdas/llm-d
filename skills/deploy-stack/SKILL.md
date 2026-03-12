@@ -27,9 +27,11 @@ This ensures you understand each step before it happens and can verify the actio
 
 Critical rules to follow when deploying and managing llm-d:
 
-1. **Do NOT change cluster-level definitions** — All changes must be made exclusively inside the designated project namespace. Never modify cluster-wide resources (e.g., ClusterRoles, ClusterRoleBindings, StorageClasses, Nodes, or any resource outside the target namespace). Scope every `kubectl apply`, `helm install`, and `helmfile apply` command to the target namespace using `-n ${NAMESPACE}`.
+1. **Do NOT change cluster-level definitions** 
+All changes must be made exclusively inside the designated project namespace. Never modify cluster-wide resources (e.g., ClusterRoles, ClusterRoleBindings, StorageClasses, Nodes, or any resource outside the target namespace). Scope every `kubectl apply`, `helm install`, and `helmfile apply` command to the target namespace using `-n ${NAMESPACE}`.
 
-2. **Do NOT modify any existing code you did not create** — Only create new files and modify them as needed. Never edit pre-existing files in the repository (e.g., existing `values.yaml`, `helmfile.yaml`, `httproute.yaml`, `README.md`, or any other committed file). If customization is required, create a new file (e.g., `values-custom.yaml`, `httproute-custom.yaml`) and reference it instead.
+2. **Do NOT modify any existing code you did not create** 
+ Only create new files and modify them as needed. Never edit pre-existing files in the repository (e.g., existing `values.yaml`, `helmfile.yaml`, `httproute.yaml`, `README.md`, or any other committed file). If customization is required, create a new file (e.g., `values-custom.yaml`, `httproute-custom.yaml`) and reference it instead.
 
 ## Overview
 
@@ -60,8 +62,7 @@ Each Well-lit Path guide contains its own prerequisites section. Common prerequi
 5. **Infrastructure** - Sufficient cluster resources (see `guides/prereq/infrastructure/README.md`)
 6. **Monitoring** (optional) - Prometheus and Grafana (see `docs/monitoring/README.md`)
 
-**Always refer to the specific guide's README.md for detailed prerequisites.**
-
+**Refer to the specific guide's README.md for detailed prerequisites.**
 ## Platform Detection
 
 Before starting any deployment, detect the platform type and verify access:
@@ -488,9 +489,8 @@ fi
 - ✅ HTTPRoute shows Accepted status
 - ✅ Inference endpoint responds to requests
 
-### 6. Completion
 
-#### 6.1 Generate Deployment Script
+### 6 Generate Deployment Script
 
 After successful validation, generate a reusable deployment script:
 
@@ -545,74 +545,11 @@ EOF
 
 chmod +x $SCRIPT_PATH
 echo "Deployment script created: $SCRIPT_PATH"
-```
-
-#### 6.2 Provide Next Steps
-
-Point user to guide-specific documentation:
 
 ```
-Deployment complete! Next steps:
 
-1. **Test inference**: See ${LLMD_PATH}/guides/${GUIDE_NAME}/README.md#testing
-2. **Run benchmarks**: See ${LLMD_PATH}/guides/${GUIDE_NAME}/README.md#benchmarking  
-3. **Monitor deployment**: See ${LLMD_PATH}/docs/monitoring/README.md
-4. **Optimize performance**: See ${LLMD_PATH}/guides/${GUIDE_NAME}/README.md#optimization
 
-Your deployment script is saved at: ${SCRIPT_PATH}
-You can reuse it for future deployments with: bash ${SCRIPT_PATH}
-```
-
----
-
-## Troubleshooting Workflow
-
-When a user reports deployment issues, follow this systematic approach:
-
-### 1. Verify Deployment Exists
-
-```bash
-# Check if namespace exists
-$CLI_CMD get namespace ${NAMESPACE} || {
-  echo "ERROR: Namespace ${NAMESPACE} does not exist"
-  exit 1
-}
-
-# Check for llm-d resources
-echo "Checking for llm-d resources..."
-$CLI_CMD get all,inferencepool,gateway,httproute,pvc -n ${NAMESPACE}
-```
-
-### 2. Check Pod Status
-
-```bash
-# Get detailed pod status
-echo "Pod status:"
-$CLI_CMD get pods -n ${NAMESPACE} -o wide
-
-# For each non-Running pod, investigate
-for pod in $($CLI_CMD get pods -n ${NAMESPACE} -o json | jq -r '.items[] | select(.status.phase != "Running") | .metadata.name'); do
-  echo "========================================="
-  echo "Investigating pod: $pod"
-  echo "========================================="
-  
-  # Get pod events
-  echo "Events:"
-  $CLI_CMD describe pod $pod -n ${NAMESPACE} | grep -A 10 "Events:"
-  
-  # Get pod logs
-  echo "Logs:"
-  $CLI_CMD logs $pod -n ${NAMESPACE} --tail=50
-  
-  # If pod restarted, get previous logs
-  if $CLI_CMD get pod $pod -n ${NAMESPACE} -o jsonpath='{.status.containerStatuses[0].restartCount}' | grep -q -v '^0$'; then
-    echo "Previous logs (pod restarted):"
-    $CLI_CMD logs $pod -n ${NAMESPACE} --previous --tail=50
-  fi
-done
-```
-
-### 3. Common Issues and Fixes
+## Common Issues and Fixes
 
 | Issue | Diagnosis Command | Fix |
 |-------|------------------|-----|
@@ -624,193 +561,6 @@ done
 | **PVC Pending** | `$CLI_CMD describe pvc <pvc> -n ${NAMESPACE}` shows "no storage class" | Create or specify storage class. Check available: `$CLI_CMD get storageclass` |
 | **Gateway not Programmed** | `$CLI_CMD describe gateway -n ${NAMESPACE}` shows errors | Check gateway provider is running. Verify Gateway API CRDs installed. |
 | **HTTPRoute not Accepted** | `$CLI_CMD describe httproute -n ${NAMESPACE}` shows errors | Verify gateway reference is correct. Check backend services exist. |
-
-### 4. Hardware-Specific Troubleshooting
-
-#### NVIDIA GPUs
-
-```bash
-# Check GPU availability on nodes
-kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, gpus: .status.capacity."nvidia.com/gpu"}'
-
-# Check GPU allocation
-kubectl describe nodes | grep -A 5 "nvidia.com/gpu"
-
-# Test GPU access from pod
-kubectl exec -it <pod-name> -n ${NAMESPACE} -- nvidia-smi
-
-# Common NVIDIA issues:
-# - Driver version mismatch: Check node driver vs container driver
-# - GPU not allocated: Verify resource requests include nvidia.com/gpu
-# - CUDA version mismatch: Ensure container CUDA version matches driver
-```
-
-#### AMD GPUs
-
-```bash
-# Check AMD GPU availability
-kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, gpus: .status.capacity."amd.com/gpu"}'
-
-# Test ROCm access from pod
-kubectl exec -it <pod-name> -n ${NAMESPACE} -- rocm-smi
-
-# Common AMD issues:
-# - ROCm version mismatch: Verify ROCm version compatibility
-# - GPU not visible: Check amdgpu driver is loaded on nodes
-# - Memory allocation: AMD GPUs may have different memory management
-```
-
-#### Intel XPU
-
-```bash
-# Check Intel XPU availability
-kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, xpus: .status.capacity."gpu.intel.com/i915"}'
-
-# Common Intel XPU issues:
-# - Driver not loaded: Verify Intel GPU drivers on nodes
-# - Device plugin not running: Check intel-gpu-plugin daemonset
-```
-
-#### TPUs (GKE)
-
-```bash
-# Check TPU availability
-kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, tpus: .status.capacity."google.com/tpu"}'
-
-# Verify TPU version
-gcloud compute tpus list --zone=<zone>
-
-# Common TPU issues:
-# - TPU version mismatch: Ensure pod requests correct TPU version
-# - TPU not attached: Verify node pool has TPUs enabled
-# - Quota exceeded: Check GCP TPU quota
-```
-
-### 5. Network and Connectivity Issues
-
-```bash
-# Check service endpoints
-$CLI_CMD get endpoints -n ${NAMESPACE}
-
-# Test internal DNS resolution
-$CLI_CMD run -it --rm debug --image=curlimages/curl --restart=Never -n ${NAMESPACE} -- \
-  nslookup <service-name>.${NAMESPACE}.svc.cluster.local
-
-# Test service connectivity
-$CLI_CMD run -it --rm debug --image=curlimages/curl --restart=Never -n ${NAMESPACE} -- \
-  curl -v http://<service-name>.${NAMESPACE}.svc.cluster.local/health
-
-# Check gateway configuration
-$CLI_CMD get gateway -n ${NAMESPACE} -o yaml
-
-# Check HTTPRoute configuration
-$CLI_CMD get httproute -n ${NAMESPACE} -o yaml
-
-# For OpenShift, check Routes
-if [ "$PLATFORM" = "openshift" ]; then
-  oc get route -n ${NAMESPACE}
-  oc describe route -n ${NAMESPACE}
-fi
-```
-
-### 6. Resource Constraints
-
-```bash
-# Check pod resource usage
-$CLI_CMD top pods -n ${NAMESPACE}
-
-# Check node resource usage
-$CLI_CMD top nodes
-
-# Check for resource pressure
-$CLI_CMD describe nodes | grep -A 5 "Conditions:"
-
-# Check for OOMKilled pods
-$CLI_CMD get pods -n ${NAMESPACE} -o json | \
-  jq -r '.items[] | select(.status.containerStatuses[]?.lastState.terminated.reason == "OOMKilled") | .metadata.name'
-
-# If resources are constrained:
-# 1. Reduce resource requests in values files
-# 2. Add more nodes to cluster
-# 3. Use smaller models
-# 4. Enable model quantization
-```
-
-### 7. Rollback and Cleanup
-
-If fixes don't work or you need to start fresh:
-
-```bash
-# Uninstall Helm releases
-cd ${LLMD_PATH}/guides/${GUIDE_NAME}
-helmfile destroy -n ${NAMESPACE}
-
-# Delete HTTPRoute and Gateway
-$CLI_CMD delete httproute,gateway -n ${NAMESPACE} --all
-
-# Delete PVCs (WARNING: This deletes data)
-$CLI_CMD delete pvc -n ${NAMESPACE} --all
-
-# Optionally delete namespace (WARNING: This deletes everything)
-$CLI_CMD delete namespace ${NAMESPACE}
-```
-
-### 8. Retry Deployment
-
-After fixing issues:
-
-1. **Verify prerequisites again** - Ensure all prerequisites are met
-2. **Re-run deployment commands** - Follow deployment workflow from Step 4
-3. **Monitor pod startup** - Watch pods come up: `$CLI_CMD get pods -n ${NAMESPACE} -w`
-4. **Check logs continuously** - Monitor for errors: `$CLI_CMD logs -f <pod-name> -n ${NAMESPACE}`
-5. **Validate thoroughly** - Run all validation steps from Step 5
-
----
-
-## Common Issues and Solutions
-
-### Long Namespace Names
-
-**Issue**: Generated pod hostnames become too long (>64 characters)
-
-**Solution**: Use shorter namespace names (e.g., `llm-d`) and set `RELEASE_NAME_POSTFIX` environment variable if needed
-
-### RDMA Connectivity Failures (Wide-EP)
-
-**Issue**: All-to-All RDMA connectivity not working
-
-**Solution**: Ensure every NIC can communicate with every NIC on all hosts (not just rail-only connectivity). Verify RDMA device plugin is running.
-
-### Pod Scheduling Failures
-
-**Issue**: Pods not scheduling despite available resources
-
-**Solution**: 
-- Check node selectors: `$CLI_CMD get pod <pod> -n ${NAMESPACE} -o yaml | grep -A 5 nodeSelector`
-- Check taints and tolerations: `$CLI_CMD describe nodes | grep -A 5 Taints`
-- Verify hardware requirements match available nodes
-
-### Gateway Routing Not Working
-
-**Issue**: HTTPRoute not routing traffic to services
-
-**Solution**:
-- Verify gateway provider is correctly deployed
-- Check HTTPRoute backend references match service names
-- Verify services have endpoints: `$CLI_CMD get endpoints -n ${NAMESPACE}`
-- Check gateway logs for routing errors
-
-### HuggingFace Token Issues
-
-**Issue**: Models fail to download or authentication errors
-
-**Solution**:
-- Verify secret exists: `$CLI_CMD get secret llm-d-hf-token -n ${NAMESPACE}`
-- Check secret has correct key: `$CLI_CMD get secret llm-d-hf-token -n ${NAMESPACE} -o yaml`
-- Verify token is valid: Test token at https://huggingface.co/settings/tokens
-- Ensure pods have access to secret (check volume mounts)
-
----
 
 ## Additional Resources
 
