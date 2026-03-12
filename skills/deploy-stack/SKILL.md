@@ -73,6 +73,12 @@ When a user requests llm-d deployment, follow this workflow:
 ### Step 0: Verify LLMD_PATH or Get Repository Location
 
 Use LLMD_PATH environment variable if set; if not set, ask the user for the llm-d repository path.
+1. Check `LLMD_PATH` environment variable
+   2. If not set, check if current directory is llm-d repository
+   3. If not found, ask the user to select from:
+      3.1  repository path
+      3.2. clone from main (default) or specific branch form https://github.com/llm-d/llm-d, ask for clone location
+      3.3 release
 
 ### Step 1: Discover and Select Well-lit Path Guide
 
