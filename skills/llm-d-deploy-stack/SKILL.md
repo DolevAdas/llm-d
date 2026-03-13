@@ -1,6 +1,6 @@
 ---
-name: llm-d-kubernetes-deployment
-description: Configure and deploy llm-d (high-performance distributed LLM inference) on an existing Kubernetes clusters using Well-lit Path guides for production-ready LLM serving with optimizations like intelligent inference scheduling, prefill/decode disaggregation, wide expert parallelism, and tiered prefix caching.
+name: llm-d-deployment
+description: Configure and deploy llm-d (high-performance distributed LLM inference) on existing Kubernetes and OpenShift clusters using Well-lit Path guides for production-ready LLM serving with optimizations like intelligent inference scheduling, prefill/decode disaggregation, wide expert parallelism, and tiered prefix caching.
 ---
 
 # llm-d Kubernetes Deployment Skill
@@ -47,7 +47,7 @@ llm-d provides Well-lit Path deployment guides located in the `guides/` director
 ## When to Use This Skill
 
 Activate this skill when users need to:
-- Deploy LLM inference on Kubernetes
+- Deploy LLM inference on Kubernetes or OpenShift
 - Optimize LLM serving performance
 - Set up production-ready model serving infrastructure
 - Choose between different deployment strategies
