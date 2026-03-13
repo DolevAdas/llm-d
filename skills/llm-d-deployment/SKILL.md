@@ -73,13 +73,14 @@ When a user requests llm-d deployment, follow this workflow:
 ### Step 0: Verify LLMD_PATH or Get Repository Location
 
 Use LLMD_PATH environment variable if set; if not set, ask the user for the llm-d repository path.
-1. Check `LLMD_PATH` environment variable
-   2. If not set, check if current directory is llm-d repository
-   3. If not found, ask the user to select from:
-      3.1  repository path
-      3.2. clone from main (default) or specific branch form https://github.com/llm-d/llm-d, ask for clone location
-      3.3 release
-
+**Check for llm-d repository:**
+- Use `LLMD_PATH` environment variable if set;
+- If not set check if current directory is llm-d repository 
+- If not found, offer options:
+  - User provides path to existing clone
+  - Clone from GitHub form https://github.com/llm-d/llm-d,main (default) or specific branch
+  - release
+  
 ### Step 1: Discover and Select Well-lit Path Guide
 
 1. Automatically discover available Well-lit Path guides:
@@ -209,19 +210,38 @@ kubectl apply -f httproute.gke.yaml -n ${NAMESPACE}
 
 #### 4.6 Deployment Validation
 
-**Verify resources are created:**
-```bash
-kubectl get pods -n ${NAMESPACE}
-kubectl get httproute,gateway,inferencepool -n ${NAMESPACE}
-```
+**Execute validation checks to confirm successful deployment:**
+
+1. **Pod health:**
+   - All pods should reach Running state
+   - Check pod logs for errors
+   - Check for CrashLoopBackOff or ImagePullBackOff
+   - Review logs if issues: `kubectl logs {pod} -n {namespace}`
+
+2. **Resource status:**
+   - InferencePool shows Ready
+   - Gateway shows Programmed
+   - HTTPRoute shows Accepted
+   - Check PVCs (if applicable)
+
+3. **Connectivity test:**
+   - Get gateway address: `kubectl get gateway -n {namespace}`
+   - Test endpoint: `curl http://{gateway-address}/v1/models`
+   - Send test request: `curl http://{gateway-address}/v1/chat/completions -d {...}`
+   Model loading can take several minutes depending on model size
+
+
+4. **Performance check:**
+   - Monitor resource usage: `kubectl top pods -n {namespace}`
+   - Check GPU utilization (if applicable)
+   - Verify response times meet requirements
 
 **Success Criteria:**
-- ✅ All pods in Running state with N/N ready
-- ✅ InferencePool shows Ready status
-- ✅ Gateway shows Programmed status
-- ✅ HTTPRoute shows Accepted status
-- ✅ Inference endpoint responds to requests
-
+- All pods in Running state with N/N ready
+- InferencePool shows Ready status
+- Gateway shows Programmed status
+- HTTPRoute shows Accepted status
+- Inference endpoint responds to requests
 
 #### Common Issues and Solutions
 
