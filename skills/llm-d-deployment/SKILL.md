@@ -292,6 +292,11 @@ kubectl apply -f httproute.gke.yaml -n ${NAMESPACE}
 
 After successful validation, generate a reusable deployment script.
 
+ **deploy.sh** - Reusable deployment script containing ALL commands that were actually executed:
+   - Include exact commands used (with actual values, not placeholders)
+   - Add prerequisite checks
+   - Include validation steps
+   - Add error handling
 
 ### Additional Resources
 
