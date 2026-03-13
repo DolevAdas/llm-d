@@ -1,6 +1,6 @@
 ---
 name: llm-d-custom-deployment
-description: Generate custom llm-d deployment configurations for Kubernetes with flexible model, hardware, and gateway settings. Creates helmfile.yaml, httproute.yaml, and deployment README based on user requirements. Use this skill when users want to deploy llm-d with specific customizations, need to adapt existing guides to their infrastructure, want to deploy custom models or configurations, or need a tailored deployment that doesn't match standard Well-lit Path guides exactly. Triggers on requests like "deploy llm-d with custom settings", "create llm-d deployment for my cluster", "I need to deploy model X on hardware Y", or "customize llm-d deployment".
+description: Generate custom llm-d deployment configurations for Kubernetes and OpenShift with flexible model, hardware, and gateway settings. Creates helmfile.yaml, httproute.yaml, and deployment README based on user requirements. Use this skill when users want to deploy llm-d with specific customizations, need to adapt existing guides to their infrastructure, want to deploy custom models or configurations, or need a tailored deployment that doesn't match standard Well-lit Path guides exactly. Triggers on requests like "deploy llm-d with custom settings", "create llm-d deployment for my cluster", "I need to deploy model X on hardware Y", or "customize llm-d deployment".
 ---
 
 # llm-d Custom Deployment Skill
@@ -58,7 +58,7 @@ Do not stop after creating files - always execute the deployment and validate it
 **Understand the deployment:**
 
 1. **Infrastructure context:**
-   - What cluster are you deploying to? (GKE, EKS, AKS, OpenShift, bare metal)
+   - What cluster are you deploying to? (GKE, EKS, AKS, OpenShift, bare metal, on-premises)
    - What namespace should be used?
    - What hardware is available? (NVIDIA GPUs, AMD GPUs, TPUs, Intel XPU, CPU-only)
 
