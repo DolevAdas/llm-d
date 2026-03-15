@@ -242,7 +242,56 @@ kubectl apply -f httproute.gke.yaml -n ${NAMESPACE}
 - Gateway shows Programmed status
 - HTTPRoute shows Accepted status
 - Inference endpoint responds to requests
+### 4.7 Generate Deployment Script
 
+**CRITICAL: You MUST ALWAYS generate a deployment script after successful validation.**
+
+After successful validation, **you MUST generate a reusable deployment script** with a date-stamped filename.
+
+**Script Naming Convention:**
+- **REQUIRED FORMAT**: `deploy-YYYYMMDD.sh` (e.g., `deploy-20260315.sh`)
+- Use the current date in the format: YYYYMMDD
+- Example: For March 15, 2026, the script should be named `deploy-20260315.sh`
+
+**Script Location:**
+- Save the script in the `deployments/` directory
+- Full path example: `deployments/deploy-20260315.sh`
+
+**Script Content Requirements:**
+The deployment script MUST contain ALL commands that were actually executed during deployment:
+- Include exact commands used (with actual values, not placeholders)
+- Add prerequisite checks at the beginning
+- Include all deployment steps in order
+- Include validation steps at the end
+- Add error handling and exit on failures
+- Add comments explaining each major step
+- Set executable permissions: `chmod +x deployments/deploy-YYYYMMDD.sh`
+
+**Example Script Structure:**
+```bash
+#!/bin/bash
+# Deployment script generated on YYYY-MM-DD
+# Guide: [guide-name]
+# Namespace: [namespace]
+
+set -e  # Exit on error
+
+# Prerequisites check
+echo "Checking prerequisites..."
+[prerequisite commands]
+
+# Deployment
+echo "Starting deployment..."
+[actual deployment commands]
+
+# Validation
+echo "Validating deployment..."
+[validation commands]
+
+echo "Deployment complete!"
+```
+
+**REMINDER: Generating this script is NOT optional - it MUST be created every time a deployment is completed.**
 #### Common Issues and Solutions
 
 ##### Long Namespace Names
@@ -288,15 +337,7 @@ kubectl apply -f httproute.gke.yaml -n ${NAMESPACE}
 
 ---
 
-### 5 Generate Deployment Script
 
-After successful validation, generate a reusable deployment script.
-
- **deploy.sh** - Reusable deployment script containing ALL commands that were actually executed:
-   - Include exact commands used (with actual values, not placeholders)
-   - Add prerequisite checks
-   - Include validation steps
-   - Add error handling
 
 ### Additional Resources
 
