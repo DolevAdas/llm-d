@@ -55,26 +55,35 @@ Do not stop after creating files - always execute the deployment and validate it
 
 ### Step 2: Requirements Gathering
 
-**Understand the deployment:**
+**CRITICAL: Automatically detect ALL possible information before asking the user.**
 
-1. **Infrastructure context:**
-   - What cluster are you deploying to? (GKE, EKS, AKS, OpenShift, bare metal, on-premises)
-   - What namespace should be used?
-   - What hardware is available? (NVIDIA GPUs, AMD GPUs, TPUs, Intel XPU, CPU-only)
+**Step 2.1: Automatic Infrastructure Detection**
 
-2. **Model requirements:**
-   - Which model(s) to deploy?
-   - Expected traffic patterns? (high throughput, low latency, mixed)
-   - Special requirements? (long context, multi-turn, prefix caching)
+Execute detection commands automatically:
 
-3. **Gateway configuration:**
-   - What gateway provider is installed? (Istio, K-Gateway, Agent Gateway, GKE Gateway)
-   - External access needed? (LoadBalancer, NodePort, Ingress)
+1. **Detect cluster type:** Check for GKE, OpenShift, EKS, or generic Kubernetes
+2. **Detect namespace:** Check NAMESPACE env var, oc project, or kubectl context
+3. **Detect hardware:** Query nodes for GPUs, TPUs, accelerators with capacity and labels
+4. **Detect gateway providers:** Check for Istio, Gateway API CRDs, gateway pods
+5. **Detect storage classes:** List available storage classes and identify default
+6. **Detect existing resources:** Check for llm-d deployments, HF token secret, PVCs
 
-**Auto-detect when possible:**
-- Query cluster for hardware: `kubectl get nodes -o json | jq '.items[].status.capacity'`
-- Check for gateway providers: `kubectl get namespace istio-system`, `kubectl get crd gateways.gateway.networking.k8s.io`
-- Detect storage classes: `kubectl get storageclass`
+**Step 2.2: Present Detected Configuration**
+
+Show detected configuration clearly:
+- Cluster type and version
+- Namespace (current or detected)
+- Hardware: GPU/TPU/CPU types and counts per node
+- Gateway provider: Istio/K-Gateway/Agent Gateway/GKE Gateway
+- Storage: Available storage classes and default
+- Existing resources: Any llm-d components already deployed
+
+**Step 2.3: Ask ONLY for Missing Information**
+
+Only ask user for:
+- Model requirements (which model to deploy)
+- Traffic patterns if not obvious from model choice
+- Override values if detected configuration is insufficient
 
 ### Step 3: Guide Recommendation
 
