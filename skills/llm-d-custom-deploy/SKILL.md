@@ -243,26 +243,34 @@ modelService:
 
 ### Step 8: Generate Reusable Artifacts
 
-**After successful deployment and validation, generate reusable artifacts:**
+**CRITICAL: After successful deployment and validation, You MUST ALWAYS generate reusable artifacts:**
 
-1. **deploy.sh** - Reusable deployment script containing ALL commands that were actually executed:
-   - Include exact commands used (with actual values, not placeholders)
-   - Add prerequisite checks
-   - Include validation steps
-   - Add error handling
+1. After successful validation, **you MUST generate a reusable deployment script** with a date-stamped filename.
+**Script Naming Convention:**
+- **REQUIRED FORMAT**: `deploy-YYYYMMDD.sh` (e.g., `deploy-20260315.sh`)
+- Use the current date in the format: YYYYMMDD
+- Example: For March 15, 2026, the script should be named `deploy-20260315.sh`
 
-2. **README.md** - **CONCISE** deployment summary:
-   - Configuration summary (namespace, model, hardware)
-   - Prerequisites checklist (bullet points only)
-   - Deployment command (single command to run)
-   - Validation steps (3-4 key checks)
-   - Common issues (2-3 most likely problems)
-   
-   **Keep it SHORT - users want quick reference, not documentation.**
+**Script Location:**
+- Save the script in the `deployments/` directory
+- Full path example: `deployments/deploy-20260315.sh`
 
-**Example deploy.sh (based on actual executed commands):**
+**Script Content Requirements:**
+The deployment script MUST contain ALL commands that were actually executed during deployment:
+- Include exact commands used (with actual values, not placeholders)
+- Add prerequisite checks at the beginning
+- Include all deployment steps in order
+- Include validation steps at the end
+- Add error handling and exit on failures
+- Add comments explaining each major step
+- Set executable permissions: `chmod +x deployments/deploy-YYYYMMDD.sh`
+
+**Example Script (based on actual executed commands):**
 ```bash
 #!/bin/bash
+# Deployment script generated on YYYY-MM-DD
+# Guide: [guide-name]
+# Namespace: [namespace]
 set -e
 
 # Configuration
@@ -292,6 +300,19 @@ kubectl get pods,inferencepool,gateway,httproute -n $NAMESPACE
 
 echo "Deployment complete!"
 ```
+**REMINDER: Generating this script is NOT optional - it MUST be created every time a deployment is completed.**
+
+
+2. **README.md** - **CONCISE** deployment summary:
+   - Configuration summary (namespace, model, hardware)
+   - Prerequisites checklist (bullet points only)
+   - Deployment command (single command to run)
+   - Validation steps (3-4 key checks)
+   - Common issues (2-3 most likely problems)
+   
+   **Keep it SHORT - users want quick reference, not documentation.**
+   **REMINDER: Generating this deployment summary is NOT optional - it MUST be created every time a deployment is completed.**
+
 
 ## Common Customization Patterns
 
