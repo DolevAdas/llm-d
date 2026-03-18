@@ -24,9 +24,7 @@ Scale prefill and decode workers in existing llm-d deployments without full rede
 
 ## Initial User Interaction
 
-1. **Ask the user how many workers they want to add:**
-   - "How many decode workers would you like to add/scale to?"
-   - "How many prefill workers would you like to add/scale to?"
+1. **Ask the user how many workers of decode and prefill they want to add:**
 
 2. **Validate the request against available resources:**
    - Run [`check-resources.sh`](scripts/check-resources.sh) to see available GPUs, RDMA, and memory
@@ -64,9 +62,51 @@ This shows:
 bash .claude/skills/llmd-scale-workers/scripts/check-resources.sh ${NAMESPACE}
 ```
 
-### 3. Scale Workers
+### 3. Choose Scaling Method
 
-**Method A: Using Script (Recommended)**
+**Ask the user for their preference or use the priority recommendations below.**
+
+Before scaling, determine which method to use based on:
+1. **User's explicit preference** (if provided)
+2. **Deployment management approach** (detected from step 1)
+3. **Speed vs. consistency trade-offs**
+4. **Operational requirements**
+
+#### Method Selection Guidelines
+
+**Ask the user:**
+"I've detected your deployment type. Which scaling method would you prefer?
+1. **Script-based** (Recommended) - Automated, safe, handles all deployment types
+2. **Helm/Helmfile** - Best for Helm-managed deployments, maintains state consistency
+3. **Direct kubectl** - Fastest, but doesn't update Helm state
+4. **LeaderWorkerSet** - For LWS-based deployments only
+
+Or I can recommend the best method based on your deployment."
+
+#### Priority Recommendations by Deployment Type
+
+**If Helm/Helmfile-managed deployment detected:**
+- **Priority 1:** Method C (Helm/Helmfile) - Maintains state consistency
+- **Priority 2:** Method A (Script) - Safe fallback
+- **Priority 3:** Method B (kubectl) - Only if speed is critical and user accepts state drift
+
+**If LeaderWorkerSet deployment detected:**
+- **Priority 1:** Method D (LeaderWorkerSet) - Native LWS scaling
+- **Priority 2:** Method A (Script) - Can handle LWS
+- **Priority 3:** Method B (kubectl) - Direct LWS scaling
+
+**If standard Deployment detected (no Helm):**
+- **Priority 1:** Method B (kubectl) - Direct and fast
+- **Priority 2:** Method A (Script) - Adds validation
+- **Priority 3:** Method C (Helm) - Not applicable
+
+**If uncertain or mixed deployment:**
+- **Priority 1:** Method A (Script) - Safest, handles all cases
+- **Priority 2:** Ask user for clarification
+
+### 4. Execute Scaling
+
+**Method A: Using Script (Recommended for most cases)**
 ```bash
 # Scale decode workers (replace ${DECODE_COUNT} with user's desired count)
 bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
@@ -77,14 +117,45 @@ bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
   -n ${NAMESPACE} -t prefill -r ${PREFILL_COUNT}
 ```
 
-**Method B: Direct kubectl**
+**Advantages:**
+- Validates resources before scaling
+- Handles multiple deployment types
+- Provides clear error messages
+- Safer for production
+
+**When to use:**
+- Default choice for most scenarios
+- When you need validation and safety checks
+- When deployment type is uncertain
+
+---
+
+**Method B: Direct kubectl (Fastest)**
 ```bash
 # Quick scale
 #replace ${DECODE_COUNT} with user's desired count
 kubectl scale deployment <deployment-name> --replicas=${DECODE_COUNT} -n ${NAMESPACE}
 ```
 
-**Method C: Helm/Helmfile (for Helm-managed deployments)**
+**Advantages:**
+- Fastest execution
+- Simple and direct
+- No dependencies
+
+**Disadvantages:**
+- No resource validation
+- Doesn't update Helm state
+- Manual error handling
+
+**When to use:**
+- Non-Helm deployments
+- Emergency scaling
+- When speed is critical
+- Development/testing environments
+
+---
+
+**Method C: Helm/Helmfile (Best for Helm-managed)**
 ```bash
 # 1. Edit values file (e.g., guides/pd-disaggregation/ms-pd/values.yaml)
 #    Change: decode.replicas: 1 → 3
@@ -94,19 +165,54 @@ cd guides/<guide-name>
 helmfile apply -n ${NAMESPACE}
 ```
 
-**Method D: LeaderWorkerSet**
+**Advantages:**
+- Maintains Helm state consistency
+- Declarative configuration
+- Version controlled changes
+- Rollback capability
+
+**Disadvantages:**
+- Slower execution
+- Requires values file access
+- More complex workflow
+
+**When to use:**
+- Helm/Helmfile-managed deployments
+- Production environments
+- When state consistency is critical
+- When changes need to be version controlled
+
+---
+
+**Method D: LeaderWorkerSet (LWS-specific)**
 ```bash
 #replace ${DECODE_COUNT} with user's desired count
 kubectl scale leaderworkerset <lws-name> --replicas=${DECODE_COUNT} -n ${NAMESPACE}
 ```
 
-## Scaling Workflow
+**Advantages:**
+- Native LWS scaling
+- Fast and reliable
+- Maintains LWS semantics
+
+**Disadvantages:**
+- Only works with LWS deployments
+- Doesn't update Helm state if Helm-managed
+
+**When to use:**
+- LeaderWorkerSet deployments only
+- When LWS-specific features are needed
+- Wide-EP or LWS-based architectures
+
+## Complete Scaling Workflow
 
 1. **Detect** - Run [`detect-deployment.sh`](scripts/detect-deployment.sh) to identify deployment type
 2. **Validate** - Run [`check-resources.sh`](scripts/check-resources.sh) to verify available resources
-3. **Scale** - Use [`scale-workers.sh`](scripts/scale-workers.sh) or direct kubectl/helm
-4. **Monitor** - Watch pods come up and verify InferencePool discovery
-5. **Test** - Verify inference routing works with new workers
+3. **Choose Method** - Ask user preference or use priority recommendations (see Method Selection Guidelines)
+4. **Scale** - Execute chosen method (A, B, C, or D)
+5. **Monitor** - Watch pods come up and verify InferencePool discovery
+6. **Test** - Verify inference routing works with new workers
+
 
 ## P/D Ratio Guidelines
 
