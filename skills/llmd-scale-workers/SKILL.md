@@ -80,7 +80,8 @@ bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
 **Method B: Direct kubectl**
 ```bash
 # Quick scale
-kubectl scale deployment <deployment-name> --replicas=3 -n ${NAMESPACE}
+#replace ${DECODE_COUNT} with user's desired count
+kubectl scale deployment <deployment-name> --replicas=${DECODE_COUNT} -n ${NAMESPACE}
 ```
 
 **Method C: Helm/Helmfile (for Helm-managed deployments)**
@@ -95,7 +96,8 @@ helmfile apply -n ${NAMESPACE}
 
 **Method D: LeaderWorkerSet**
 ```bash
-kubectl scale leaderworkerset <lws-name> --replicas=3 -n ${NAMESPACE}
+#replace ${DECODE_COUNT} with user's desired count
+kubectl scale leaderworkerset <lws-name> --replicas=${DECODE_COUNT} -n ${NAMESPACE}
 ```
 
 ## Scaling Workflow
@@ -185,68 +187,6 @@ kubectl get pods -n ${NAMESPACE} --show-labels
 
 # Check InferencePool selector
 kubectl get inferencepool <pool-name> -n ${NAMESPACE} -o yaml
-```
-
-## Examples
-
-### Example 1: Interactive Scaling Workflow
-```
-User: "I want to scale my workers"
-
-Agent: "How many decode workers would you like to add/scale to?"
-User: "5 decode workers"
-
-Agent: "How many prefill workers would you like to add/scale to?"
-User: "10 prefill workers"
-
-Agent: [Runs check-resources.sh]
-Agent: "Your cluster has 32 available GPUs. With TP=4 for decode (4 GPUs each) and TP=1 for prefill (1 GPU each):
-- 5 decode workers need: 20 GPUs
-- 10 prefill workers need: 10 GPUs
-- Total needed: 30 GPUs ✓ Available
-
-This gives you a 2:1 prefill:decode ratio, which is good for balanced workloads.
-Shall I proceed with scaling to 5 decode and 10 prefill workers?"
-
-User: "Yes"
-Agent: [Executes scaling commands]
-```
-
-### Example 2: Resource-Constrained Scenario
-```
-User: "Add 10 decode workers"
-
-Agent: [Runs check-resources.sh]
-Agent: "Your cluster has 16 available GPUs. With TP=4 for decode workers (4 GPUs each):
-- 10 decode workers would need: 40 GPUs ❌ Not available
-- Maximum possible: 4 decode workers (16 GPUs)
-
-Would you like to proceed with 4 decode workers instead?"
-```
-
-### Example 3: Unreasonable Ratio Suggestion
-```
-User: "I want 1 decode worker and 20 prefill workers"
-
-Agent: "I notice you're requesting a 20:1 prefill:decode ratio. This ratio is typically used for very high input/low output workloads (like 10k+ input tokens, <1k output tokens).
-
-What is your expected workload pattern?
-- High input/low output (10k ISL / 1k OSL)
-- High output/low input (1k ISL / 10k OSL)
-- Balanced (4k ISL / 4k OSL)
-
-Based on your answer, I can recommend a more optimal ratio."
-```
-
-### Example 4: Direct Scaling Commands
-```bash
-# After user confirms, scale decode workers to their requested count
-bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
-  -n ${NAMESPACE} -t decode -r ${USER_REQUESTED_DECODE_COUNT}
-
-# Scale prefill workers to their requested count
-bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
-  -n ${NAMESPACE} -t prefill -r ${USER_REQUESTED_PREFILL_COUNT}
 ```
 
 ## Safety Checklist
