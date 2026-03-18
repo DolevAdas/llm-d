@@ -22,7 +22,27 @@ Scale prefill and decode workers in existing llm-d deployments without full rede
 - kubectl or oc CLI with appropriate permissions
 - Sufficient cluster resources (GPUs, RDMA, memory)
 
-## Quick Start
+## Initial User Interaction
+
+1. **Ask the user how many workers they want to add:**
+   - "How many decode workers would you like to add/scale to?"
+   - "How many prefill workers would you like to add/scale to?"
+
+2. **Validate the request against available resources:**
+   - Run [`check-resources.sh`](scripts/check-resources.sh) to see available GPUs, RDMA, and memory
+   - Calculate if the requested workers can fit in the cluster
+   - If resources are insufficient, inform the user and suggest the maximum possible workers
+
+3. **Provide recommendations if the request seems unreasonable:**
+   - If the user requests too many workers for available resources, suggest a realistic number
+   - If the P/D ratio seems suboptimal for their use case, recommend better ratios (see P/D Ratio Guidelines below)
+   - Example: "Your cluster has 16 available GPUs. With TP=4 for decode workers, you can add up to 4 decode workers. Would you like to proceed with 4 instead?"
+
+4. **Confirm before scaling:**
+   - Show the user what will be scaled and the expected resource usage
+   - Wait for explicit confirmation before executing the scaling commands
+
+## Workflow
 
 ### 1. Detect Current Deployment
 
@@ -48,13 +68,13 @@ bash .claude/skills/llmd-scale-workers/scripts/check-resources.sh ${NAMESPACE}
 
 **Method A: Using Script (Recommended)**
 ```bash
-# Scale decode workers
+# Scale decode workers (replace ${DECODE_COUNT} with user's desired count)
 bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
-  -n ${NAMESPACE} -t decode -r 3
+  -n ${NAMESPACE} -t decode -r ${DECODE_COUNT}
 
-# Scale prefill workers
+# Scale prefill workers (replace ${PREFILL_COUNT} with user's desired count)
 bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
-  -n ${NAMESPACE} -t prefill -r 8
+  -n ${NAMESPACE} -t prefill -r ${PREFILL_COUNT}
 ```
 
 **Method B: Direct kubectl**
@@ -88,16 +108,26 @@ kubectl scale leaderworkerset <lws-name> --replicas=3 -n ${NAMESPACE}
 
 ## P/D Ratio Guidelines
 
+Use these guidelines to recommend appropriate worker counts based on the user's workload:
+
 **High Input/Low Output (10k ISL / 1k OSL)**
 - Ratio: 4:1 or 8:1 (prefill:decode)
 - More prefill workers needed
+- Example: 8 prefill workers, 2 decode workers
 
 **Low Input/High Output (1k ISL / 10k OSL)**
 - Ratio: 1:2 or 1:4 (prefill:decode)
 - More decode workers needed
+- Example: 2 prefill workers, 8 decode workers
 
 **Balanced (4k ISL / 4k OSL)**
 - Ratio: 2:1 or 1:1 (prefill:decode)
+- Example: 4 prefill workers, 2 decode workers OR 4 prefill workers, 4 decode workers
+
+**When to Suggest Different Ratios:**
+- If user requests 1 decode and 20 prefill for a high-output workload, suggest reversing the ratio
+- If user requests equal workers but their workload is clearly skewed, recommend adjusting
+- Always explain the reasoning based on their expected input/output sequence lengths
 
 ## Resource Requirements
 
@@ -159,30 +189,64 @@ kubectl get inferencepool <pool-name> -n ${NAMESPACE} -o yaml
 
 ## Examples
 
-### Example 1: Scale Decode Workers (Helm)
-```bash
-# Current: 1 decode, 4 prefill
-# Goal: 3 decode workers
+### Example 1: Interactive Scaling Workflow
+```
+User: "I want to scale my workers"
 
-cd ${LLMD_PATH}/guides/pd-disaggregation
-# Edit ms-pd/values.yaml: decode.replicas: 3
-helmfile apply -n ${NAMESPACE}
+Agent: "How many decode workers would you like to add/scale to?"
+User: "5 decode workers"
+
+Agent: "How many prefill workers would you like to add/scale to?"
+User: "10 prefill workers"
+
+Agent: [Runs check-resources.sh]
+Agent: "Your cluster has 32 available GPUs. With TP=4 for decode (4 GPUs each) and TP=1 for prefill (1 GPU each):
+- 5 decode workers need: 20 GPUs
+- 10 prefill workers need: 10 GPUs
+- Total needed: 30 GPUs ✓ Available
+
+This gives you a 2:1 prefill:decode ratio, which is good for balanced workloads.
+Shall I proceed with scaling to 5 decode and 10 prefill workers?"
+
+User: "Yes"
+Agent: [Executes scaling commands]
 ```
 
-### Example 2: Quick Scale with kubectl
-```bash
-# Scale decode to 3
-kubectl scale deployment ms-pd-decode --replicas=3 -n llmd-ns
+### Example 2: Resource-Constrained Scenario
+```
+User: "Add 10 decode workers"
 
-# Verify
-kubectl get pods -n llmd-ns -l llm-d.ai/role=decode
+Agent: [Runs check-resources.sh]
+Agent: "Your cluster has 16 available GPUs. With TP=4 for decode workers (4 GPUs each):
+- 10 decode workers would need: 40 GPUs ❌ Not available
+- Maximum possible: 4 decode workers (16 GPUs)
+
+Would you like to proceed with 4 decode workers instead?"
 ```
 
-### Example 3: Scale Both Workers
+### Example 3: Unreasonable Ratio Suggestion
+```
+User: "I want 1 decode worker and 20 prefill workers"
+
+Agent: "I notice you're requesting a 20:1 prefill:decode ratio. This ratio is typically used for very high input/low output workloads (like 10k+ input tokens, <1k output tokens).
+
+What is your expected workload pattern?
+- High input/low output (10k ISL / 1k OSL)
+- High output/low input (1k ISL / 10k OSL)
+- Balanced (4k ISL / 4k OSL)
+
+Based on your answer, I can recommend a more optimal ratio."
+```
+
+### Example 4: Direct Scaling Commands
 ```bash
-# Scale decode and prefill
-bash scripts/scale-workers.sh -n llmd-ns -t decode -r 3
-bash scripts/scale-workers.sh -n llmd-ns -t prefill -r 8
+# After user confirms, scale decode workers to their requested count
+bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
+  -n ${NAMESPACE} -t decode -r ${USER_REQUESTED_DECODE_COUNT}
+
+# Scale prefill workers to their requested count
+bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
+  -n ${NAMESPACE} -t prefill -r ${USER_REQUESTED_PREFILL_COUNT}
 ```
 
 ## Safety Checklist
