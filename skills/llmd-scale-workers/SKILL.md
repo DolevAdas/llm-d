@@ -1,9 +1,38 @@
 ---
 name: llm-d-scale-workers
-description: Scale prefill or decode workers in existing llm-d deployments on Kubernetes/OpenShift. Supports both manual scaling (immediate one-time adjustments) and automatic scaling with WVA (continuous saturation-based autoscaling). Use for handling load changes, optimizing P/D ratios, or adjusting resource utilization without disrupting running deployments.
+description: Execute scaling actions for llm-d prefill/decode workers on Kubernetes/OpenShift. Runs detection scripts, calculates optimal P/D ratios, and executes scaling commands directly. Supports manual scaling (immediate adjustments via existing scripts/kubectl) and automatic WVA setup (continuous autoscaling). Use when users need to handle load changes, optimize worker ratios, scale up/down for cost savings, or set up autoscaling - the skill performs the actions.
 ---
 
 # llm-d Worker Scaling Skill
+## 📋 Command Execution Notice
+
+**Before executing any command, I will:**
+1. **Explain what the command does** - A clear description of the command's purpose and expected outcome
+2. **Show the actual command** - The exact command that will be executed
+3. **Explain why it's needed** - How this command fits into the overall deployment workflow
+
+This ensures you understand each step before it happens and can verify the actions align with your intentions.
+
+
+> ## 🔔 ALWAYS NOTIFY THE USER BEFORE CREATING ANYTHING
+>
+> **RULE**: Before creating ANY resource — including namespaces, files or any Kubernetes object — you MUST first tell the user what you are about to create and why.
+>
+> **Format to use before every creation action**:
+> > "I am about to create `<resource-type>` named `<name>` because `<reason>`. Proceeding now."
+>
+>
+> **Never silently create resources.** If you are unsure whether a resource already exists, check first, then notify before acting.
+
+## What Not To Do
+
+Critical rules to follow when deploying and managing llm-d:
+
+1. **Do NOT change cluster-level definitions** 
+All changes must be made exclusively inside the designated project namespace. Never modify cluster-wide resources (e.g., ClusterRoles, ClusterRoleBindings, StorageClasses, Nodes, or any resource outside the target namespace). Scope every `kubectl apply`, `helm install`, and `helmfile apply` command to the target namespace using `-n ${NAMESPACE}`.
+
+2. **Do NOT modify any existing code you did not create** 
+ Only create new files and modify them as needed. Never edit pre-existing files in the repository . If customization is required, create a new file and reference it instead.
 
 ## Overview
 
@@ -33,203 +62,84 @@ Works with P/D disaggregation, standard inference, and LeaderWorkerSet deploymen
 - kubectl or oc CLI with appropriate permissions
 - Sufficient cluster resources (GPUs, RDMA, memory)
 
-## Initial User Interaction
+## Workflow: Direct Execution Only
 
-### Step 1: Detect Current Deployment
+**CRITICAL RULES:**
+1. **ALWAYS use existing scripts** from `skills/llmd-scale-workers/scripts/` directory
+2. **NEVER create README.md files** - provide summaries in conversation only
+3. **NEVER create new scripts** - use the existing ones
+4. **Scripts run non-interactively by default** - all scripts are designed for automation
 
-**First, detect the current deployment to understand the environment:**
+### Step 1: Detect Deployment
 
+Execute detection immediately:
 ```bash
-# Run detection script
 bash skills/llmd-scale-workers/scripts/detect-deployment.sh ${NAMESPACE}
 ```
 
-This shows:
-- Helm releases
-- Deployments and LeaderWorkerSets
-- Current decode/prefill workers
-- Current replica counts
-- Platform type (OpenShift, GKE, Kind, etc.)
+### Step 2: Execute Scaling Action
 
-### Step 2: Ask User to Choose Scaling Approach
-
-**Ask:** "I've detected your deployment: [summary]
-
-Choose scaling approach:
-- **Manual** - Scale workers once now (immediate adjustment)
-- **Automatic (WVA)** - Set up continuous autoscaling based on workload saturation"
-
-#### If Automatic: Run WVA Setup
-
+**For WVA Autoscaling Setup:**
 ```bash
+# Non-interactive by default - uses auto-detected values
 bash skills/llmd-scale-workers/scripts/setup-wva-autoscaling.sh
+
+# For interactive mode with prompts (optional):
+INTERACTIVE=true bash skills/llmd-scale-workers/scripts/setup-wva-autoscaling.sh
 ```
+Then provide 3-5 sentence summary in conversation.
 
-The script auto-detects config, confirms with user, installs WVA, and verifies. See [`guides/workload-autoscaling/README.md`](../../guides/workload-autoscaling/README.md) for manual setup.
-
-**WVA handles scaling automatically once configured - no further steps needed.**
-
-#### If Manual: Continue Below
-
-### Step 3: Check Available Resources
-
+**For Manual Scaling:**
 ```bash
-# Check cluster resources
-bash skills/llmd-scale-workers/scripts/check-resources.sh ${NAMESPACE}
+# Non-interactive by default - scales immediately
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT}
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefill -r ${COUNT}
+
+# For interactive mode with confirmation prompt (optional):
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT} -i
 ```
+Then provide 3-5 sentence summary in conversation.
 
-### Step 4: Ask How Many Workers to Scale
+### Output Format
 
-**Ask the user how many workers of decode and prefill they want to add**
+**Correct approach:**
+- Execute the existing scripts
+- Provide brief summary: "I've set up WVA autoscaling for your granite-34b deployment. It will scale between 2-10 replicas based on saturation. Monitor with: kubectl get hpa -n ${NAMESPACE}"
 
-### Step 5: Validate and Provide Recommendations
+**WRONG - Never do this:**
+- ❌ Create README.md
+- ❌ Create setup-autoscaling.sh (use existing scripts/setup-wva-autoscaling.sh)
+- ❌ Create monitoring-guide.md
+- ❌ Create new scaling scripts (use existing scripts/scale-workers.sh)
 
-- Calculate if the requested workers can fit in the cluster
-- If resources are insufficient, inform the user and suggest the maximum possible workers
-- If the user requests too many workers for available resources, suggest a realistic number
-- If the P/D ratio seems suboptimal for their use case, recommend better ratios (see P/D Ratio Guidelines below)
-- Example: "Your cluster has 16 available GPUs. With TP=4 for decode workers, you can add up to 4 decode workers. Would you like to proceed with 4 instead?"
+## Scaling Methods
 
-### Step 6: Confirm Before Scaling
+Choose method based on deployment type (auto-detect from Step 1):
 
-- Show the user what will be scaled and the expected resource usage
-- Wait for explicit confirmation before executing the scaling commands
+**Preferred method by deployment type:**
+- **Helm/Helmfile-managed:** Use scale-workers.sh script (maintains state)
+- **LeaderWorkerSet:** Use kubectl scale leaderworkerset
+- **Standard Deployment:** Use kubectl scale deployment
+- **Uncertain:** Use scale-workers.sh script (safest)
 
-## Manual Scaling Workflow
-
-### 1. Choose Scaling Method
-
-**Ask:** "Which scaling method do you prefer?
-1. **Script** (Recommended) - Automated validation, handles all types
-2. **Helm/Helmfile** - Best for Helm-managed, maintains state
-3. **kubectl** - Fastest, doesn't update Helm state
-4. **LeaderWorkerSet** - For LWS deployments only"
-
-**Priority by deployment type:**
-- **Helm/Helmfile-managed:** Helm → Script → kubectl
-- **LeaderWorkerSet:** LWS → Script → kubectl
-- **Standard Deployment:** kubectl → Script
-- **Uncertain:** Script (safest)
-
-### 4. Execute Scaling
-
-**Method A: Using Script (Recommended for most cases)**
+**Execute scaling:**
 ```bash
-# Scale decode workers (replace ${DECODE_COUNT} with user's desired count)
-bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
-  -n ${NAMESPACE} -t decode -r ${DECODE_COUNT}
+# Using script (recommended for Helm deployments) - non-interactive by default
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT}
 
-# Scale prefill workers (replace ${PREFILL_COUNT} with user's desired count)
-bash .claude/skills/llmd-scale-workers/scripts/scale-workers.sh \
-  -n ${NAMESPACE} -t prefill -r ${PREFILL_COUNT}
+# Using script with interactive confirmation (optional)
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT} -i
+
+# Using kubectl (fast, for non-Helm)
+kubectl scale deployment <name> --replicas=${COUNT} -n ${NAMESPACE}
+
+# Using kubectl for LWS
+kubectl scale leaderworkerset <name> --replicas=${COUNT} -n ${NAMESPACE}
 ```
 
-**Advantages:**
-- Validates resources before scaling
-- Handles multiple deployment types
-- Provides clear error messages
-- Safer for production
-
-**When to use:**
-- Default choice for most scenarios
-- When you need validation and safety checks
-- When deployment type is uncertain
-
----
-
-**Method B: Direct kubectl (Fastest)**
-```bash
-# Quick scale
-#replace ${DECODE_COUNT} with user's desired count
-kubectl scale deployment <deployment-name> --replicas=${DECODE_COUNT} -n ${NAMESPACE}
-```
-
-**Advantages:**
-- Fastest execution
-- Simple and direct
-- No dependencies
-
-**Disadvantages:**
-- No resource validation
-- Doesn't update Helm state
-- Manual error handling
-
-**When to use:**
-- Non-Helm deployments
-- Emergency scaling
-- When speed is critical
-- Development/testing environments
-
----
-
-**Method C: Helm/Helmfile (Best for Helm-managed)**
-```bash
-# 1. Edit values file (e.g., guides/pd-disaggregation/ms-pd/values.yaml)
-#    Change: decode.replicas: 1 → 3
-
-# 2. Apply changes
-cd guides/<guide-name>
-helmfile apply -n ${NAMESPACE}
-```
-
-**Advantages:**
-- Maintains Helm state consistency
-- Declarative configuration
-- Version controlled changes
-- Rollback capability
-
-**Disadvantages:**
-- Slower execution
-- Requires values file access
-- More complex workflow
-
-**When to use:**
-- Helm/Helmfile-managed deployments
-- Production environments
-- When state consistency is critical
-- When changes need to be version controlled
-
----
-
-**Method D: LeaderWorkerSet (LWS-specific)**
-```bash
-#replace ${DECODE_COUNT} with user's desired count
-kubectl scale leaderworkerset <lws-name> --replicas=${DECODE_COUNT} -n ${NAMESPACE}
-```
-
-**Advantages:**
-- Native LWS scaling
-- Fast and reliable
-- Maintains LWS semantics
-
-**Disadvantages:**
-- Only works with LWS deployments
-- Doesn't update Helm state if Helm-managed
-
-**When to use:**
-- LeaderWorkerSet deployments only
-- When LWS-specific features are needed
-- Wide-EP or LWS-based architectures
-
-## Complete Workflow
-
-### Manual Scaling
-1. **Detect** - Run [`detect-deployment.sh`](scripts/detect-deployment.sh)
-2. **Validate** - Run [`check-resources.sh`](scripts/check-resources.sh)
-3. **Choose Method** - Ask user or use priority recommendations
-4. **Scale** - Execute chosen method (Script/Helm/kubectl/LWS)
-5. **Monitor** - Watch pods and verify InferencePool discovery
-6. **Test** - Verify inference routing
-
-### Automatic Scaling (WVA)
-Run [`setup-wva-autoscaling.sh`](scripts/setup-wva-autoscaling.sh) which:
-1. Auto-detects platform, deployments, accelerators, model ID, Prometheus
-2. Confirms configuration with user
-3. Installs WVA CRDs and configures platform-specific settings
-4. Verifies installation (pods, HPA, metrics)
-5. Provides monitoring commands
-
-See [`guides/workload-autoscaling/README.md`](../../guides/workload-autoscaling/README.md) for manual setup.
+**Script Modes:**
+- **Default (Non-Interactive):** Scripts execute immediately without prompts - ideal for automation
+- **Interactive Mode:** Use `-i` flag or `INTERACTIVE=true` environment variable for confirmation prompts
 
 
 ## P/D Ratio Guidelines
@@ -265,69 +175,12 @@ Use these guidelines to recommend appropriate worker counts based on the user's 
 - Lower tensor parallelism (TP=1, TP=2)
 - Example: 1 worker = 1 GPU + 1 RDMA
 
-## Monitoring and Verification
+## Post-Scaling Verification
 
+After scaling, verify the workers are running:
 ```bash
-# Watch pod status
-kubectl get pods -n ${NAMESPACE} -l llm-d.ai/role=decode -w
-
-# Wait for readiness
-kubectl wait --for=condition=ready pod \
-  -l llm-d.ai/role=decode -n ${NAMESPACE} --timeout=600s
-
-# Check InferencePool
-kubectl describe inferencepool <pool-name> -n ${NAMESPACE}
-
-# Test endpoint
-GATEWAY_ADDR=$(kubectl get gateway <gateway-name> -n ${NAMESPACE} \
-  -o jsonpath='{.status.addresses[0].value}')
-curl http://${GATEWAY_ADDR}/v1/models
+kubectl get pods -n ${NAMESPACE} -l llm-d.ai/role=decode
+kubectl wait --for=condition=ready pod -l llm-d.ai/role=decode -n ${NAMESPACE} --timeout=600s
 ```
 
-## Troubleshooting
-
-**Pods Stuck in Pending**
-```bash
-# Check why
-kubectl describe pod <pod-name> -n ${NAMESPACE}
-
-# Check node resources
-kubectl describe nodes | grep -A 10 "Allocated resources"
-```
-
-**Pods Failing to Start**
-```bash
-# Check logs
-kubectl logs <pod-name> -n ${NAMESPACE} -c vllm
-
-# Check RDMA
-kubectl describe node <node-name> | grep rdma
-```
-
-**InferencePool Not Discovering Workers**
-```bash
-# Verify labels
-kubectl get pods -n ${NAMESPACE} --show-labels
-
-# Check InferencePool selector
-kubectl get inferencepool <pool-name> -n ${NAMESPACE} -o yaml
-```
-
-## Safety Checklist
-
-Before scaling:
-- ✅ Verify current deployment state
-- ✅ Check available cluster resources
-- ✅ Calculate required resources
-- ✅ Confirm namespace and deployment names
-- ✅ Test with small increments first
-- ✅ Monitor pod startup
-- ✅ Verify InferencePool discovery
-
-## Notes
-
-- Scaling is non-destructive to existing workers
-- New workers auto-join InferencePool
-- Scale-down gracefully terminates workers
-- Helm method maintains state consistency
-- kubectl scaling is faster but doesn't update Helm state
+If issues occur, check pod status with `kubectl describe pod <pod-name> -n ${NAMESPACE}`.

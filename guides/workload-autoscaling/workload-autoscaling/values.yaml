@@ -1,57 +1,97 @@
-wva:
-  enabled: true
-  imagePullPolicy: Always
-  metrics:
-    enabled: true
-    port: 8443
-    secure: true
+# WVA Configuration for granite-34b deployment in dolev-llmd namespace
+# This configures WVA to autoscale based on saturation metrics
 
-  reconcileInterval: 60s
-  prometheus:
-    monitoringNamespace: llm-d-monitoring  # Namespace for Prometheus monitoring
-    serviceAccountName: "kube-prometheus-stack-prometheus"
-    baseURL: "https://llmd-kube-prometheus-stack-prometheus.llm-d-monitoring.svc.cluster.local:9090"
-    # Development security configuration (relaxed for easier development)
-    tls:
-      insecureSkipVerify: true   # Development: true, Production: false
-      caCertPath: ""  # Empty string to disable CA cert when using insecureSkipVerify
-      # caCert: |  # Uncomment and provide your CA certificate
-      #   -----BEGIN CERTIFICATE-----
-      #   YOUR_CA_CERTIFICATE_HERE
-      #   -----END CERTIFICATE-----
-
-  # Environment variable to enable experimental hybrid-based optimization
-  #  When "on", runs both capacity analyzer and model-based optimizer with arbitration
-  #  When "model-only" runs model-based optimizer only
-  #  When "off" or unset, runs capacity analyzer only (default, reactive mode)
-  experimentalHybridOptimization: false  # Enable experimental hybrid optimization (default: false)
-  scaleToZero: false  # Enable scaling variants to zero replicas (default: false)
-
+# Connection to existing llm-d deployment
 llmd:
-  # Namespace where the llm-d inference-scheduling stack is deployed
-  # For wva-only mode: Set this to your existing inference-scheduling namespace (default auto-detected from LLMD_NAMESPACE env var)
-  # For full installation: This will be set automatically to match the deployment namespace
-  namespace: llm-d-autoscaler
-  # Model service name (Service name of the vLLM inference pods)
-  # For wva-only mode: Auto-detected as ms-{LLMD_RELEASE_NAME_POSTFIX}-llm-d-modelservice, but can be explicitly set here
-  # For full installation: Auto-generated from release name postfix, but can be overridden here
-  modelName: ms-workload-autoscaler-llm-d-modelservice
-  # Model ID must match the model configured in your inference-scheduling deployment
-  modelID: "Qwen/Qwen3-0.6B"
+  namespace: dolev-llmd  # Namespace where your granite-34b deployment exists
+  modelName: ms-granite34b-llm-d-modelservice  # Your model service deployment name
+  modelID: "ibm-granite/granite-34b-code-instruct-8k"  # Must match your deployment
 
+# Accelerator configuration
 va:
-  enabled: true
-  accelerator: H100
-  sloTpot: 10
-  sloTtft: 1000
+  accelerator: A100  # NVIDIA A100 GPUs as specified
+  
+# WVA Controller configuration
+wva:
+  # Prometheus configuration for OpenShift
+  prometheus:
+    monitoringNamespace: openshift-user-workload-monitoring
+    baseURL: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
+    serviceAccountName: "prometheus-k8s"
+    tls:
+      insecureSkipVerify: true  # Set to false for production with proper CA cert
+      caCertPath: ""  # Optional: set CA cert path for production
+  
+  # Controller settings
+  controller:
+    replicas: 1
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+  
+  # Metrics collection interval
+  metricsInterval: 30s
+  
+  # SLO configuration for autoscaling decisions
+  slo:
+    # Target saturation percentage (0-100)
+    # WVA will scale up when saturation exceeds this threshold
+    targetSaturation: 70
+    
+    # Minimum saturation before scaling down
+    minSaturation: 40
+    
+    # Cooldown periods to prevent flapping
+    scaleUpCooldown: 60s
+    scaleDownCooldown: 300s
 
+# HPA configuration
 hpa:
   enabled: true
-  maxReplicas: 10
-  targetAverageValue: "1"
+  minReplicas: 2  # Minimum replicas (handles ~20 concurrent users)
+  maxReplicas: 10  # Maximum replicas (handles ~100 concurrent users)
+  
+  # Scale-to-zero configuration (optional, disabled by default)
+  scaleToZero:
+    enabled: false  # Set to true if you want to scale to 0 during idle periods
+    idleTimeout: 600s  # Time before scaling to 0
+  
+  # Scaling behavior
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50  # Scale up by 50% of current replicas
+        periodSeconds: 60
+      - type: Pods
+        value: 2  # Or add 2 pods
+        periodSeconds: 60
+      selectPolicy: Max  # Use the policy that scales up more
+    
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      policies:
+      - type: Percent
+        value: 25  # Scale down by 25% of current replicas
+        periodSeconds: 60
+      - type: Pods
+        value: 1  # Or remove 1 pod
+        periodSeconds: 60
+      selectPolicy: Min  # Use the policy that scales down less
 
-vllmService:
-  enabled: false
-  nodePort: 30000
-  interval: 15s
-  scheme: http  # vLLM emulator runs on HTTP
+# Resource requirements for WVA components
+resources:
+  controller:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Made with Bob

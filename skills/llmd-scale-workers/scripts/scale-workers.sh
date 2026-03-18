@@ -3,9 +3,18 @@
 
 set -e
 
+# Non-interactive by default, can be overridden with INTERACTIVE=true
+NON_INTERACTIVE="${NON_INTERACTIVE:-true}"
+INTERACTIVE="${INTERACTIVE:-false}"
+
+# If INTERACTIVE is explicitly set to true, disable non-interactive mode
+if [ "$INTERACTIVE" = "true" ]; then
+    NON_INTERACTIVE="false"
+fi
+
 # Usage
 usage() {
-    echo "Usage: $0 -n NAMESPACE -t TYPE -r REPLICAS [-d DEPLOYMENT_NAME] [-m METHOD]"
+    echo "Usage: $0 -n NAMESPACE -t TYPE -r REPLICAS [-d DEPLOYMENT_NAME] [-m METHOD] [-i]"
     echo ""
     echo "Options:"
     echo "  -n NAMESPACE        Target namespace"
@@ -13,21 +22,29 @@ usage() {
     echo "  -r REPLICAS        New replica count"
     echo "  -d DEPLOYMENT_NAME Deployment name (auto-detected if not provided)"
     echo "  -m METHOD          Scaling method: kubectl|helm (default: kubectl)"
+    echo "  -i                 Interactive mode (prompt for confirmation)"
+    echo ""
+    echo "Environment Variables:"
+    echo "  INTERACTIVE        Set to 'true' to enable confirmation prompts"
+    echo "  NON_INTERACTIVE    Set to 'false' to enable confirmation prompts"
     echo ""
     echo "Examples:"
     echo "  $0 -n llmd-ns -t decode -r 3"
     echo "  $0 -n llmd-ns -t prefill -r 8 -m helm"
+    echo "  $0 -n llmd-ns -t decode -r 3 -i  # Interactive mode"
+    echo "  INTERACTIVE=true $0 -n llmd-ns -t decode -r 3"
     exit 1
 }
 
 # Parse arguments
-while getopts "n:t:r:d:m:h" opt; do
+while getopts "n:t:r:d:m:ih" opt; do
     case $opt in
         n) NAMESPACE="$OPTARG" ;;
         t) TYPE="$OPTARG" ;;
         r) REPLICAS="$OPTARG" ;;
         d) DEPLOYMENT_NAME="$OPTARG" ;;
         m) METHOD="$OPTARG" ;;
+        i) INTERACTIVE="true"; NON_INTERACTIVE="false" ;;
         h) usage ;;
         *) usage ;;
     esac
@@ -73,12 +90,16 @@ echo "Target Replicas: $REPLICAS"
 echo "Method: $METHOD"
 echo ""
 
-# Confirm action
-read -p "Proceed with scaling? (y/n) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Scaling cancelled"
-    exit 0
+# Confirm action (skip in non-interactive mode)
+if [ "$NON_INTERACTIVE" = "true" ]; then
+    echo "Non-interactive mode - proceeding with scaling..."
+else
+    read -p "Proceed with scaling? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Scaling cancelled"
+        exit 0
+    fi
 fi
 
 # Execute scaling based on method
