@@ -1,20 +1,31 @@
 ---
 name: llm-d-scale-workers
-description: Scale prefill or decode workers in existing llm-d deployments on Kubernetes/OpenShift without redeployment. Use when you need to add/remove workers to handle load changes, optimize P/D ratios, or adjust resource utilization dynamically without disrupting running deployments.
+description: Scale prefill or decode workers in existing llm-d deployments on Kubernetes/OpenShift. Supports both manual scaling (immediate one-time adjustments) and automatic scaling with WVA (continuous saturation-based autoscaling). Use for handling load changes, optimizing P/D ratios, or adjusting resource utilization without disrupting running deployments.
 ---
 
 # llm-d Worker Scaling Skill
 
 ## Overview
 
-Scale prefill and decode workers in existing llm-d deployments without full redeployment. Supports P/D disaggregation, standard inference, and LeaderWorkerSet deployments.
+Scale prefill and decode workers in existing llm-d deployments without full redeployment. Supports:
+- **Manual scaling** - Immediate one-time adjustments via scripts, kubectl, Helm, or LeaderWorkerSet
+- **Automatic scaling (WVA)** - Continuous saturation-based autoscaling for production workloads
+
+Works with P/D disaggregation, standard inference, and LeaderWorkerSet deployments.
 
 ## When to Use
 
-- Add/remove decode workers for throughput changes
-- Add/remove prefill workers to balance P/D ratios
-- Scale workers without disrupting existing deployments
-- Optimize resource utilization dynamically
+**Manual Scaling:**
+- Quick adjustments for known workload changes
+- Development/testing environments
+- P/D disaggregation or Wide-EP deployments (WVA not yet supported)
+- Immediate, predictable control needed
+
+**Automatic Scaling (WVA):**
+- Production with variable traffic patterns
+- Hands-off optimization based on inference server saturation
+- Intelligent Inference Scheduling deployments only (currently)
+- Reduce operational overhead
 
 ## Prerequisites
 
@@ -24,29 +35,13 @@ Scale prefill and decode workers in existing llm-d deployments without full rede
 
 ## Initial User Interaction
 
-1. **Ask the user how many workers of decode and prefill they want to add:**
+### Step 1: Detect Current Deployment
 
-2. **Validate the request against available resources:**
-   - Run [`check-resources.sh`](scripts/check-resources.sh) to see available GPUs, RDMA, and memory
-   - Calculate if the requested workers can fit in the cluster
-   - If resources are insufficient, inform the user and suggest the maximum possible workers
-
-3. **Provide recommendations if the request seems unreasonable:**
-   - If the user requests too many workers for available resources, suggest a realistic number
-   - If the P/D ratio seems suboptimal for their use case, recommend better ratios (see P/D Ratio Guidelines below)
-   - Example: "Your cluster has 16 available GPUs. With TP=4 for decode workers, you can add up to 4 decode workers. Would you like to proceed with 4 instead?"
-
-4. **Confirm before scaling:**
-   - Show the user what will be scaled and the expected resource usage
-   - Wait for explicit confirmation before executing the scaling commands
-
-## Workflow
-
-### 1. Detect Current Deployment
+**First, detect the current deployment to understand the environment:**
 
 ```bash
 # Run detection script
-bash .claude/skills/llmd-scale-workers/scripts/detect-deployment.sh ${NAMESPACE}
+bash skills/llmd-scale-workers/scripts/detect-deployment.sh ${NAMESPACE}
 ```
 
 This shows:
@@ -54,55 +49,67 @@ This shows:
 - Deployments and LeaderWorkerSets
 - Current decode/prefill workers
 - Current replica counts
+- Platform type (OpenShift, GKE, Kind, etc.)
 
-### 2. Check Available Resources
+### Step 2: Ask User to Choose Scaling Approach
+
+**Ask:** "I've detected your deployment: [summary]
+
+Choose scaling approach:
+- **Manual** - Scale workers once now (immediate adjustment)
+- **Automatic (WVA)** - Set up continuous autoscaling based on workload saturation"
+
+#### If Automatic: Run WVA Setup
+
+```bash
+bash skills/llmd-scale-workers/scripts/setup-wva-autoscaling.sh
+```
+
+The script auto-detects config, confirms with user, installs WVA, and verifies. See [`guides/workload-autoscaling/README.md`](../../guides/workload-autoscaling/README.md) for manual setup.
+
+**WVA handles scaling automatically once configured - no further steps needed.**
+
+#### If Manual: Continue Below
+
+### Step 3: Check Available Resources
 
 ```bash
 # Check cluster resources
-bash .claude/skills/llmd-scale-workers/scripts/check-resources.sh ${NAMESPACE}
+bash skills/llmd-scale-workers/scripts/check-resources.sh ${NAMESPACE}
 ```
 
-### 3. Choose Scaling Method
+### Step 4: Ask How Many Workers to Scale
 
-**Ask the user for their preference or use the priority recommendations below.**
+**Ask the user how many workers of decode and prefill they want to add**
 
-Before scaling, determine which method to use based on:
-1. **User's explicit preference** (if provided)
-2. **Deployment management approach** (detected from step 1)
-3. **Speed vs. consistency trade-offs**
-4. **Operational requirements**
+### Step 5: Validate and Provide Recommendations
 
-#### Method Selection Guidelines
+- Calculate if the requested workers can fit in the cluster
+- If resources are insufficient, inform the user and suggest the maximum possible workers
+- If the user requests too many workers for available resources, suggest a realistic number
+- If the P/D ratio seems suboptimal for their use case, recommend better ratios (see P/D Ratio Guidelines below)
+- Example: "Your cluster has 16 available GPUs. With TP=4 for decode workers, you can add up to 4 decode workers. Would you like to proceed with 4 instead?"
 
-**Ask the user:**
-"I've detected your deployment type. Which scaling method would you prefer?
-1. **Script-based** (Recommended) - Automated, safe, handles all deployment types
-2. **Helm/Helmfile** - Best for Helm-managed deployments, maintains state consistency
-3. **Direct kubectl** - Fastest, but doesn't update Helm state
-4. **LeaderWorkerSet** - For LWS-based deployments only
+### Step 6: Confirm Before Scaling
 
-Or I can recommend the best method based on your deployment."
+- Show the user what will be scaled and the expected resource usage
+- Wait for explicit confirmation before executing the scaling commands
 
-#### Priority Recommendations by Deployment Type
+## Manual Scaling Workflow
 
-**If Helm/Helmfile-managed deployment detected:**
-- **Priority 1:** Method C (Helm/Helmfile) - Maintains state consistency
-- **Priority 2:** Method A (Script) - Safe fallback
-- **Priority 3:** Method B (kubectl) - Only if speed is critical and user accepts state drift
+### 1. Choose Scaling Method
 
-**If LeaderWorkerSet deployment detected:**
-- **Priority 1:** Method D (LeaderWorkerSet) - Native LWS scaling
-- **Priority 2:** Method A (Script) - Can handle LWS
-- **Priority 3:** Method B (kubectl) - Direct LWS scaling
+**Ask:** "Which scaling method do you prefer?
+1. **Script** (Recommended) - Automated validation, handles all types
+2. **Helm/Helmfile** - Best for Helm-managed, maintains state
+3. **kubectl** - Fastest, doesn't update Helm state
+4. **LeaderWorkerSet** - For LWS deployments only"
 
-**If standard Deployment detected (no Helm):**
-- **Priority 1:** Method B (kubectl) - Direct and fast
-- **Priority 2:** Method A (Script) - Adds validation
-- **Priority 3:** Method C (Helm) - Not applicable
-
-**If uncertain or mixed deployment:**
-- **Priority 1:** Method A (Script) - Safest, handles all cases
-- **Priority 2:** Ask user for clarification
+**Priority by deployment type:**
+- **Helm/Helmfile-managed:** Helm → Script → kubectl
+- **LeaderWorkerSet:** LWS → Script → kubectl
+- **Standard Deployment:** kubectl → Script
+- **Uncertain:** Script (safest)
 
 ### 4. Execute Scaling
 
@@ -204,14 +211,25 @@ kubectl scale leaderworkerset <lws-name> --replicas=${DECODE_COUNT} -n ${NAMESPA
 - When LWS-specific features are needed
 - Wide-EP or LWS-based architectures
 
-## Complete Scaling Workflow
+## Complete Workflow
 
-1. **Detect** - Run [`detect-deployment.sh`](scripts/detect-deployment.sh) to identify deployment type
-2. **Validate** - Run [`check-resources.sh`](scripts/check-resources.sh) to verify available resources
-3. **Choose Method** - Ask user preference or use priority recommendations (see Method Selection Guidelines)
-4. **Scale** - Execute chosen method (A, B, C, or D)
-5. **Monitor** - Watch pods come up and verify InferencePool discovery
-6. **Test** - Verify inference routing works with new workers
+### Manual Scaling
+1. **Detect** - Run [`detect-deployment.sh`](scripts/detect-deployment.sh)
+2. **Validate** - Run [`check-resources.sh`](scripts/check-resources.sh)
+3. **Choose Method** - Ask user or use priority recommendations
+4. **Scale** - Execute chosen method (Script/Helm/kubectl/LWS)
+5. **Monitor** - Watch pods and verify InferencePool discovery
+6. **Test** - Verify inference routing
+
+### Automatic Scaling (WVA)
+Run [`setup-wva-autoscaling.sh`](scripts/setup-wva-autoscaling.sh) which:
+1. Auto-detects platform, deployments, accelerators, model ID, Prometheus
+2. Confirms configuration with user
+3. Installs WVA CRDs and configures platform-specific settings
+4. Verifies installation (pods, HPA, metrics)
+5. Provides monitoring commands
+
+See [`guides/workload-autoscaling/README.md`](../../guides/workload-autoscaling/README.md) for manual setup.
 
 
 ## P/D Ratio Guidelines
