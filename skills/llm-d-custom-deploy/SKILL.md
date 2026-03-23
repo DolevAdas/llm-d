@@ -256,13 +256,11 @@ modelService:
 
 1. After successful validation, **you MUST generate a reusable deployment script** with a date-stamped filename.
 **Script Naming Convention:**
-- **REQUIRED FORMAT**: `deploy-YYYYMMDD.sh` (e.g., `deploy-20260315.sh`)
-- Use the current date in the format: YYYYMMDD
-- Example: For March 15, 2026, the script should be named `deploy-20260315.sh`
+- **REQUIRED FORMAT**: `deploy-DDMMYYYY.sh` (e.g., `deploy-15032026.sh`)
 
 **Script Location:**
 - Save the script in the `deployments/` directory
-- Full path example: `deployments/deploy-20260315.sh`
+- Full path example: `deployments/deploy-15032026.sh`
 
 **Script Content Requirements:**
 The deployment script MUST contain ALL commands that were actually executed during deployment:
@@ -272,12 +270,12 @@ The deployment script MUST contain ALL commands that were actually executed duri
 - Include validation steps at the end
 - Add error handling and exit on failures
 - Add comments explaining each major step
-- Set executable permissions: `chmod +x deployments/deploy-YYYYMMDD.sh`
+- Set executable permissions: `chmod +x deployments/deploy-DDMMYYYY.sh`
 
 **Example Script (based on actual executed commands):**
 ```bash
 #!/bin/bash
-# Deployment script generated on YYYY-MM-DD
+# Deployment script generated on DD-MM-YYYY
 # Guide: [guide-name]
 # Namespace: [namespace]
 set -e
@@ -406,7 +404,7 @@ echo "Deployment complete!"
 - Production deployment needs tailoring
 - User wants to understand and control the deployment process
 
-**Use deploy-stack when:**
+**Use llm-d-deployment when:**
 - User wants to quickly try a standard Well-lit Path guide
 - Minimal customization needed
 - Following tested recipes exactly
@@ -447,12 +445,3 @@ A successful deployment should have:
 - **llm-d-infra**: `https://llm-d-incubation.github.io/llm-d-infra/` - Infrastructure components
 - **llm-d-modelservice**: `https://llm-d-incubation.github.io/llm-d-modelservice/` - Model server
 - **inferencepool**: `oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool` - Inference scheduler
-
-### CRD Installation Commands
-```bash
-# Gateway API CRDs (v1.4.0)
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
-
-# Inference Extension CRDs (v1.3.0)
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.0/install.yaml
-```
