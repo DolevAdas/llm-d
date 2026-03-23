@@ -127,8 +127,15 @@ deployments/deploy-{namespace}-{timestamp}/
    - Set up routing rules
    - Add custom headers or filters
    - Configure TLS if needed
+   - See detailed HTTPRoute examples and guidance below
 
-3. **Values files:**
+3. **DestinationRule for EPP service (Istio only):**
+   - Configure connection pooling and timeouts for the EPP (Endpoint Picker) service
+   - Required for high-throughput scenarios to prevent connection bottlenecks
+   - Created by the `llm-d-infra` chart when using Istio gateway provider
+   - See [Gateway Customization docs](../docs/customizing-your-gateway.md) for details
+
+4. **Values files:**
    - Model configuration (name, revision, quantization)
    - Resource requests/limits
    - Hardware-specific settings
@@ -369,6 +376,31 @@ echo "Deployment complete!"
 - Use GKE-managed gateway
 - Configure Cloud Armor if needed
 - Set up Cloud CDN for caching
+
+### HTTPRoute Configuration
+
+HTTPRoute connects your Gateway to the InferencePool for routing inference requests.
+
+**Example:** See [`examples/httproute-example.yaml`](examples/httproute-example.yaml) for a complete annotated example with inline comments explaining each field.
+
+**Key customization points:**
+- `metadata.name`: Your HTTPRoute name (e.g., `llm-d-{model}`)
+- `parentRefs[].name`: Gateway name from llm-d-infra chart (e.g., `infra-{release}-inference-gateway`)
+- `backendRefs[].group`: Use `inference.networking.k8s.io` for InferencePool backends
+- `backendRefs[].name`: InferencePool name from inferencepool chart (e.g., `gaie-{release}`)
+
+### DestinationRule Configuration (Istio)
+
+DestinationRule optimizes connection handling to the EPP service for high-throughput scenarios. Used with Istio gateway provider. Typically created by the `llm-d-infra` chart.
+
+**Example:** See [`examples/destinationrule-example.yaml`](examples/destinationrule-example.yaml) for a complete annotated example with inline comments explaining each field.
+
+**Key customization points:**
+- `metadata.name`: Match your EPP service name
+- `spec.host`: Full service FQDN (e.g., `gaie-{release}.{namespace}.svc.cluster.local`)
+- `connectionPool.http.http2MaxRequests`: Adjust for expected concurrent requests
+- `connectionPool.tcp.maxConnections`: Adjust for throughput requirements
+- Timeout values: Adjust based on inference duration
 
 ## Troubleshooting Guidance
 
