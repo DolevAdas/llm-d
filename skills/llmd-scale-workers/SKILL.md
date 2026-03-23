@@ -39,6 +39,7 @@ All changes must be made exclusively inside the designated project namespace. Ne
 Scale prefill and decode workers in existing llm-d deployments without full redeployment. Supports:
 - **Manual scaling** - Immediate one-time adjustments via scripts, kubectl, Helm, or LeaderWorkerSet
 - **Automatic scaling (WVA)** - Continuous saturation-based autoscaling for production workloads
+- **Suspend/Resume** - Scale workers to zero for cost savings and restore to previous state
 
 Works with P/D disaggregation, standard inference, and LeaderWorkerSet deployments.
 
@@ -55,6 +56,12 @@ Works with P/D disaggregation, standard inference, and LeaderWorkerSet deploymen
 - Hands-off optimization based on inference server saturation
 - Intelligent Inference Scheduling deployments only (currently)
 - Reduce operational overhead
+
+**Suspend/Resume:**
+- Temporarily pause deployments during off-hours to save costs
+- Maintenance windows or planned downtime
+- Development/testing environments when not actively in use
+- Quick way to free up cluster resources without deleting deployments
 
 ## Prerequisites
 
@@ -100,6 +107,23 @@ bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decod
 ```
 Then provide 3-5 sentence summary in conversation.
 
+**For Suspend/Resume:**
+```bash
+# Suspend (scale to zero) - saves current replica counts
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r 0
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefill -r 0
+
+# Resume (restore previous replica counts)
+# First, retrieve the saved replica counts from deployment annotations
+DECODE_REPLICAS=$(kubectl get deployment -n ${NAMESPACE} -l llm-d.ai/role=decode -o jsonpath='{.items[0].metadata.annotations.llm-d\.ai/previous-replicas}')
+PREFILL_REPLICAS=$(kubectl get deployment -n ${NAMESPACE} -l llm-d.ai/role=prefill -o jsonpath='{.items[0].metadata.annotations.llm-d\.ai/previous-replicas}')
+
+# Then restore to previous counts
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${DECODE_REPLICAS:-2}
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefill -r ${PREFILL_REPLICAS:-4}
+```
+Then provide 3-5 sentence summary in conversation.
+
 ### Output Format
 
 **Correct approach:**
@@ -117,29 +141,88 @@ Then provide 3-5 sentence summary in conversation.
 Choose method based on deployment type (auto-detect from Step 1):
 
 **Preferred method by deployment type:**
-- **Helm/Helmfile-managed:** Use scale-workers.sh script (maintains state)
+- **Standard Deployment:** Use scale-workers.sh script or kubectl scale deployment
 - **LeaderWorkerSet:** Use kubectl scale leaderworkerset
-- **Standard Deployment:** Use kubectl scale deployment
-- **Uncertain:** Use scale-workers.sh script (safest)
 
 **Execute scaling:**
 ```bash
-# Using script (recommended for Helm deployments) - non-interactive by default
+# Using script (recommended) - non-interactive by default, auto-detects deployment
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT}
 
 # Using script with interactive confirmation (optional)
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT} -i
 
-# Using kubectl (fast, for non-Helm)
+# Using kubectl directly (equivalent to script for standard deployments)
 kubectl scale deployment <name> --replicas=${COUNT} -n ${NAMESPACE}
 
-# Using kubectl for LWS
+# Using kubectl for LeaderWorkerSet
 kubectl scale leaderworkerset <name> --replicas=${COUNT} -n ${NAMESPACE}
 ```
 
 **Script Modes:**
 - **Default (Non-Interactive):** Scripts execute immediately without prompts - ideal for automation
 - **Interactive Mode:** Use `-i` flag or `INTERACTIVE=true` environment variable for confirmation prompts
+
+### Important Notes on Scaling
+
+**kubectl Scaling:**
+- ✅ **No pod restarts** - existing pods keep running with their in-memory vLLM cache intact
+- ✅ **Immediate effect** - new pods are added or removed without disrupting existing ones
+- ⚠️ **Note for Helm-managed deployments:** If your deployment was created via Helm/Helmfile, scaling with kubectl creates a mismatch between your values.yaml and actual replica count. Running `helmfile apply` later will revert to the values.yaml replica count.
+
+**Cache Implications:**
+- **Existing pods:** Keep their in-memory HBM prefix cache (no performance impact)
+- **New pods:** Start with empty cache and need warmup period
+- **Shared storage:** If using tiered prefix cache with shared storage (CephFS, Lustre), cache persists and new pods can leverage it
+- **Performance:** Expect temporary TTFT increase for new pods until cache warms up
+
+**Best Practices:**
+1. Use kubectl scaling (via script or directly) for quick, non-disruptive adjustments
+2. For Helm-managed deployments, document your scaling changes to track drift from values.yaml
+3. Consider using shared storage backends for production to minimize cache warmup impact
+4. For production workloads with variable traffic, prefer WVA autoscaling over manual scaling
+
+## Suspend/Resume Operations
+
+Suspend and resume allow you to scale workers to zero and restore them to their previous state, useful for cost savings during off-hours or maintenance windows.
+
+### Suspend (Scale to Zero)
+
+Before scaling to zero, the current replica count is automatically saved as an annotation on the deployment:
+
+```bash
+# Suspend decode workers
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r 0
+
+# Suspend prefill workers
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefill -r 0
+```
+
+The script automatically stores the current replica count in the deployment annotation `llm-d.ai/previous-replicas` before scaling to zero.
+
+### Resume (Restore Previous State)
+
+To restore workers to their previous replica counts:
+
+```bash
+# Get saved replica counts from annotations
+DECODE_REPLICAS=$(kubectl get deployment -n ${NAMESPACE} -l llm-d.ai/role=decode \
+    -o jsonpath='{.items[0].metadata.annotations.llm-d\.ai/previous-replicas}')
+PREFILL_REPLICAS=$(kubectl get deployment -n ${NAMESPACE} -l llm-d.ai/role=prefill \
+    -o jsonpath='{.items[0].metadata.annotations.llm-d\.ai/previous-replicas}')
+
+# Resume with saved counts (use defaults if annotation not found)
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${DECODE_REPLICAS:-2}
+bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefill -r ${PREFILL_REPLICAS:-4}
+```
+
+### Suspend/Resume Best Practices
+
+1. **Always suspend both worker types together** to avoid resource waste
+2. **Verify saved replica counts** before suspending: `kubectl get deployment -n ${NAMESPACE} -o jsonpath='{.items[*].spec.replicas}'`
+3. **Document your normal replica counts** in case annotations are lost
+4. **Test resume in non-production** before using in production environments
+5. **Consider WVA autoscaling** for production instead of manual suspend/resume
 
 
 ## P/D Ratio Guidelines
