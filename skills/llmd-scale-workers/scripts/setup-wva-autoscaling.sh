@@ -261,8 +261,93 @@ case "$PLATFORM" in
 esac
 
 echo ""
-echo -e "${GREEN}Step 5: Deploying WVA...${NC}"
-cd guides/workload-autoscaling
+echo -e "${GREEN}Step 5: Locating workload-autoscaling configuration...${NC}"
+
+# Function to find llm-d repository
+find_llmd_repo() {
+    # Check LLMD_PATH environment variable first
+    if [ -n "$LLMD_PATH" ] && [ -d "$LLMD_PATH/guides/workload-autoscaling" ]; then
+        echo "$LLMD_PATH"
+        return 0
+    fi
+    
+    # Check if current directory is llm-d repository
+    if [ -d "guides/workload-autoscaling" ]; then
+        echo "$(pwd)"
+        return 0
+    fi
+    
+    # Check parent directory
+    if [ -d "../guides/workload-autoscaling" ]; then
+        echo "$(cd .. && pwd)"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Try to find llm-d repository
+LLMD_REPO_PATH=$(find_llmd_repo)
+
+if [ -z "$LLMD_REPO_PATH" ]; then
+    echo -e "${YELLOW}Could not find guides/workload-autoscaling directory.${NC}"
+    echo ""
+    echo "Options:"
+    echo "  1. Provide path to llm-d repository"
+    echo "  2. Download files from GitHub"
+    echo ""
+    
+    if [ "$NON_INTERACTIVE" = "true" ]; then
+        echo -e "${GREEN}Non-interactive mode - downloading from GitHub${NC}"
+        USE_GITHUB="y"
+    else
+        read -p "Download from GitHub? (y/n): " USE_GITHUB
+    fi
+    
+    if [[ $USE_GITHUB =~ ^[Yy]$ ]]; then
+        echo -e "${GREEN}Downloading workload-autoscaling files from GitHub...${NC}"
+        WORK_DIR="${TMPDIR:-/tmp}/llm-d-workload-autoscaling-$$"
+        mkdir -p "$WORK_DIR"
+        
+        # Download necessary files
+        echo "Downloading helmfile.yaml.gotmpl..."
+        curl -sSL -o "$WORK_DIR/helmfile.yaml.gotmpl" \
+            "https://raw.githubusercontent.com/llm-d/llm-d/main/guides/workload-autoscaling/helmfile.yaml.gotmpl"
+        
+        echo "Downloading values files..."
+        mkdir -p "$WORK_DIR/workload-autoscaling"
+        curl -sSL -o "$WORK_DIR/workload-autoscaling/values.yaml" \
+            "https://raw.githubusercontent.com/llm-d/llm-d/main/guides/workload-autoscaling/workload-autoscaling/values.yaml"
+        
+        mkdir -p "$WORK_DIR/gaie-workload-autoscaling"
+        curl -sSL -o "$WORK_DIR/gaie-workload-autoscaling/values.yaml" \
+            "https://raw.githubusercontent.com/llm-d/llm-d/main/guides/workload-autoscaling/gaie-workload-autoscaling/values.yaml"
+        
+        mkdir -p "$WORK_DIR/ms-workload-autoscaling"
+        curl -sSL -o "$WORK_DIR/ms-workload-autoscaling/values.yaml" \
+            "https://raw.githubusercontent.com/llm-d/llm-d/main/guides/workload-autoscaling/ms-workload-autoscaling/values.yaml"
+        
+        LLMD_REPO_PATH="$WORK_DIR"
+        echo -e "${GREEN}Files downloaded to: ${WORK_DIR}${NC}"
+    else
+        if [ "$NON_INTERACTIVE" = "true" ]; then
+            echo -e "${RED}Error: LLMD_PATH not set and guides/workload-autoscaling not found${NC}"
+            echo "Please set LLMD_PATH environment variable or run from llm-d repository"
+            exit 1
+        fi
+        
+        read -p "Enter path to llm-d repository: " USER_LLMD_PATH
+        if [ -d "$USER_LLMD_PATH/guides/workload-autoscaling" ]; then
+            LLMD_REPO_PATH="$USER_LLMD_PATH"
+        else
+            echo -e "${RED}Error: guides/workload-autoscaling not found in $USER_LLMD_PATH${NC}"
+            exit 1
+        fi
+    fi
+fi
+
+echo -e "${GREEN}Using workload-autoscaling from: ${LLMD_REPO_PATH}${NC}"
+cd "$LLMD_REPO_PATH/guides/workload-autoscaling"
 
 # Update values file (this would need actual sed/yq commands based on detected values)
 echo "Updating workload-autoscaling/values.yaml with detected configuration..."
@@ -279,6 +364,13 @@ else
     export LLMD_NAMESPACE=$(echo "$DEPLOYMENTS" | cut -d'/' -f1 | head -1)
     export LLMD_RELEASE_NAME_POSTFIX="inference-scheduling"
     helmfile apply -e wva-only -n ${NAMESPACE}
+fi
+
+# Cleanup temporary directory if we downloaded files
+if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
+    echo -e "${YELLOW}Cleaning up temporary files...${NC}"
+    cd - > /dev/null
+    rm -rf "$WORK_DIR"
 fi
 
 echo ""

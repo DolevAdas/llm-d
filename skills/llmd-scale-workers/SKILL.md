@@ -87,25 +87,21 @@ bash skills/llmd-scale-workers/scripts/detect-deployment.sh ${NAMESPACE}
 ### Step 2: Execute Scaling Action
 
 **For WVA Autoscaling Setup:**
-```bash
-# Non-interactive by default - uses auto-detected values
-bash skills/llmd-scale-workers/scripts/setup-wva-autoscaling.sh
 
-# For interactive mode with prompts (optional):
-INTERACTIVE=true bash skills/llmd-scale-workers/scripts/setup-wva-autoscaling.sh
+Deploy WVA controller with embedded default ConfigMaps (no guides/ directory required):
+
+```bash
+# Deploy to target namespace
+NAMESPACE=${NAMESPACE} bash skills/llmd-scale-workers/scripts/deploy-wva-controller.sh
 ```
-Then provide 3-5 sentence summary in conversation.
 
-**For Manual Scaling:**
+**For detailed WVA setup, verification, and troubleshooting:**
+See [`WVA_CONTROLLER_DEPLOYMENT.md`](skills/llmd-scale-workers/WVA_CONTROLLER_DEPLOYMENT.md)
+
+**For Manual Scaling (alternative to WVA):**
 ```bash
-# Non-interactive by default - scales immediately
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT}
-bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefill -r ${COUNT}
-
-# For interactive mode with confirmation prompt (optional):
-bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT} -i
 ```
-Then provide 3-5 sentence summary in conversation.
 
 **For Suspend/Resume:**
 ```bash
