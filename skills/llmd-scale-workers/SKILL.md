@@ -1,67 +1,47 @@
 ---
 name: llm-d-scale-workers
-description: Execute scaling actions for llm-d prefill/decode workers on Kubernetes/OpenShift. Runs detection scripts, calculates optimal P/D ratios, and executes scaling commands directly. Supports manual scaling (immediate adjustments via existing scripts/kubectl) and automatic WVA setup (continuous autoscaling). Use when users need to handle load changes, optimize worker ratios, scale up/down for cost savings, or set up autoscaling - the skill performs the actions.
+description: Execute scaling actions for llm-d prefill/decode workers on Kubernetes/OpenShift. Supports manual scaling (immediate adjustments), automatic WVA autoscaling (continuous saturation-based), and suspend/resume operations. Use for handling load changes, optimizing worker ratios, cost savings, or setting up autoscaling.
 ---
 
 # llm-d Worker Scaling Skill
+
 ## 📋 Command Execution Notice
 
 **Before executing any command, I will:**
-1. **Explain what the command does** - A clear description of the command's purpose and expected outcome
-2. **Show the actual command** - The exact command that will be executed
-3. **Explain why it's needed** - How this command fits into the overall deployment workflow
+1. **Explain what the command does** - Clear description of purpose and expected outcome
+2. **Show the actual command** - The exact command to be executed
+3. **Explain why it's needed** - How it fits into the workflow
 
-This ensures you understand each step before it happens and can verify the actions align with your intentions.
-
-
-> ## 🔔 ALWAYS NOTIFY THE USER BEFORE CREATING ANYTHING
+> ## 🔔 ALWAYS NOTIFY BEFORE CREATING RESOURCES
 >
-> **RULE**: Before creating ANY resource — including namespaces, files or any Kubernetes object — you MUST first tell the user what you are about to create and why.
+> **RULE**: Before creating ANY resource (namespaces, files, Kubernetes objects), notify the user first.
 >
-> **Format to use before every creation action**:
-> > "I am about to create `<resource-type>` named `<name>` because `<reason>`. Proceeding now."
+> **Format**: "I am about to create `<resource-type>` named `<name>` because `<reason>`. Proceeding now."
 >
->
-> **Never silently create resources.** If you are unsure whether a resource already exists, check first, then notify before acting.
+> **Never silently create resources.** Check existence first, then notify before acting.
 
-## What Not To Do
+## Critical Rules
 
-Critical rules to follow when deploying and managing llm-d:
+1. **Do NOT change cluster-level definitions** - All changes must be within the designated namespace. Never modify cluster-wide resources (ClusterRoles, ClusterRoleBindings, StorageClasses, Nodes). Always scope commands with `-n ${NAMESPACE}`.
 
-1. **Do NOT change cluster-level definitions** 
-All changes must be made exclusively inside the designated project namespace. Never modify cluster-wide resources (e.g., ClusterRoles, ClusterRoleBindings, StorageClasses, Nodes, or any resource outside the target namespace). Scope every `kubectl apply`, `helm install`, and `helmfile apply` command to the target namespace using `-n ${NAMESPACE}`.
-
-2. **Do NOT modify any existing code you did not create** 
- Only create new files and modify them as needed. Never edit pre-existing files in the repository . If customization is required, create a new file and reference it instead.
+2. **Do NOT modify existing repository code** - Only create new files. Never edit pre-existing repository files. For customization, create new files and reference them.
 
 ## Overview
 
-Scale prefill and decode workers in existing llm-d deployments without full redeployment. Supports:
-- **Manual scaling** - Immediate one-time adjustments via scripts, kubectl, Helm, or LeaderWorkerSet
-- **Automatic scaling (WVA)** - Continuous saturation-based autoscaling for production workloads
-- **Suspend/Resume** - Scale workers to zero for cost savings and restore to previous state
+Scale prefill and decode workers in existing llm-d deployments without full redeployment:
+- **Manual scaling** - Immediate adjustments via scripts or kubectl
+- **Automatic scaling (WVA)** - Continuous saturation-based autoscaling for production
+- **Suspend/Resume** - Scale to zero for cost savings, restore to previous state
 
 Works with P/D disaggregation, standard inference, and LeaderWorkerSet deployments.
 
 ## When to Use
 
-**Manual Scaling:**
-- Quick adjustments for known workload changes
-- Development/testing environments
-- P/D disaggregation or Wide-EP deployments (WVA not yet supported)
-- Immediate, predictable control needed
-
-**Automatic Scaling (WVA):**
-- Production with variable traffic patterns
-- Hands-off optimization based on inference server saturation
-- Intelligent Inference Scheduling deployments only (currently)
-- Reduce operational overhead
-
-**Suspend/Resume:**
-- Temporarily pause deployments during off-hours to save costs
-- Maintenance windows or planned downtime
-- Development/testing environments when not actively in use
-- Quick way to free up cluster resources without deleting deployments
+| Method | Use Cases |
+|--------|-----------|
+| **Manual Scaling** | Quick adjustments for known workload changes<br>Development/testing environments<br>P/D disaggregation or Wide-EP deployments<br>Immediate, predictable control needed |
+| **Automatic Scaling (WVA)** | Production with variable traffic patterns<br>Hands-off optimization based on saturation<br>Intelligent Inference Scheduling deployments only<br>Reduce operational overhead |
+| **Suspend/Resume** | Off-hours cost savings<br>Maintenance windows or planned downtime<br>Free up cluster resources without deletion |
 
 ## Prerequisites
 
@@ -69,190 +49,123 @@ Works with P/D disaggregation, standard inference, and LeaderWorkerSet deploymen
 - kubectl or oc CLI with appropriate permissions
 - Sufficient cluster resources (GPUs, RDMA, memory)
 
-## Workflow: Direct Execution Only
+## Workflow
 
 **CRITICAL RULES:**
-1. **ALWAYS use existing scripts** from `skills/llmd-scale-workers/scripts/` directory
+1. **ALWAYS use existing scripts** from `skills/llmd-scale-workers/scripts/`
 2. **NEVER create README.md files** - provide summaries in conversation only
-3. **NEVER create new scripts** - use the existing ones
-4. **Scripts run non-interactively by default** - all scripts are designed for automation
+3. **NEVER create new scripts** - use existing ones
+4. **Scripts run non-interactively by default** - designed for automation (use `-i` flag for interactive mode)
 
 ### Step 1: Detect Deployment
 
-Execute detection immediately:
 ```bash
 bash skills/llmd-scale-workers/scripts/detect-deployment.sh ${NAMESPACE}
 ```
 
 ### Step 2: Execute Scaling Action
 
-**For WVA Autoscaling Setup:**
-
-Deploy WVA controller with embedded default ConfigMaps (no guides/ directory required):
-
+**WVA Autoscaling Setup:**
 ```bash
-# Deploy to target namespace
 NAMESPACE=${NAMESPACE} bash skills/llmd-scale-workers/scripts/deploy-wva-controller.sh
 ```
+See [`WVA_CONTROLLER_DEPLOYMENT.md`](skills/llmd-scale-workers/WVA_CONTROLLER_DEPLOYMENT.md) for detailed setup and troubleshooting.
 
-**For detailed WVA setup, verification, and troubleshooting:**
-See [`WVA_CONTROLLER_DEPLOYMENT.md`](skills/llmd-scale-workers/WVA_CONTROLLER_DEPLOYMENT.md)
-
-**For Manual Scaling (alternative to WVA):**
+**Manual Scaling:**
 ```bash
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT}
 ```
 
-**For Suspend/Resume:**
+**Suspend/Resume Operations:**
 ```bash
-# Suspend (scale to zero) - saves current replica counts
+# Suspend (saves current replica counts as annotations)
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r 0
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefill -r 0
 
-# Resume (restore previous replica counts)
-# First, retrieve the saved replica counts from deployment annotations
+# Resume (restore from annotations)
 DECODE_REPLICAS=$(kubectl get deployment -n ${NAMESPACE} -l llm-d.ai/role=decode -o jsonpath='{.items[0].metadata.annotations.llm-d\.ai/previous-replicas}')
 PREFILL_REPLICAS=$(kubectl get deployment -n ${NAMESPACE} -l llm-d.ai/role=prefill -o jsonpath='{.items[0].metadata.annotations.llm-d\.ai/previous-replicas}')
 
-# Then restore to previous counts
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${DECODE_REPLICAS:-2}
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefill -r ${PREFILL_REPLICAS:-4}
 ```
-Then provide 3-5 sentence summary in conversation.
 
 ### Output Format
 
-**Correct approach:**
-- Execute the existing scripts
-- Provide brief summary: "I've set up WVA autoscaling for your granite-34b deployment. It will scale between 2-10 replicas based on saturation. Monitor with: kubectl get hpa -n ${NAMESPACE}"
+**Correct:** Execute scripts, provide brief summary (3-5 sentences)
 
-**WRONG - Never do this:**
-- ❌ Create README.md
-- ❌ Create setup-autoscaling.sh (use existing scripts/setup-wva-autoscaling.sh)
-- ❌ Create monitoring-guide.md
-- ❌ Create new scaling scripts (use existing scripts/scale-workers.sh)
+**WRONG:**
+- ❌ Create README.md, monitoring-guide.md, or any documentation files
+- ❌ Create new scripts (use existing ones)
 
 ## Scaling Methods
 
-Choose method based on deployment type (auto-detect from Step 1):
+**Deployment Type Detection:** Auto-detected in Step 1
 
-**Preferred method by deployment type:**
-- **Standard Deployment:** Use scale-workers.sh script or kubectl scale deployment
-- **LeaderWorkerSet:** Use kubectl scale leaderworkerset
+| Deployment Type | Scaling Method |
+|----------------|----------------|
+| **Standard Deployment** | `scale-workers.sh` script or `kubectl scale deployment` |
+| **LeaderWorkerSet** | `kubectl scale leaderworkerset` |
 
-**Execute scaling:**
+**Execution Examples:**
 ```bash
-# Using script (recommended) - non-interactive by default, auto-detects deployment
+# Using script (recommended) - auto-detects deployment type
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT}
 
-# Using script with interactive confirmation (optional)
+# Interactive mode (optional)
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT} -i
 
-# Using kubectl directly (equivalent to script for standard deployments)
+# Direct kubectl (standard deployments)
 kubectl scale deployment <name> --replicas=${COUNT} -n ${NAMESPACE}
 
-# Using kubectl for LeaderWorkerSet
+# Direct kubectl (LeaderWorkerSet)
 kubectl scale leaderworkerset <name> --replicas=${COUNT} -n ${NAMESPACE}
 ```
 
-**Script Modes:**
-- **Default (Non-Interactive):** Scripts execute immediately without prompts - ideal for automation
-- **Interactive Mode:** Use `-i` flag or `INTERACTIVE=true` environment variable for confirmation prompts
+### Scaling Characteristics
 
-### Important Notes on Scaling
-
-**kubectl Scaling:**
-- ✅ **No pod restarts** - existing pods keep running with their in-memory vLLM cache intact
-- ✅ **Immediate effect** - new pods are added or removed without disrupting existing ones
-- ⚠️ **Note for Helm-managed deployments:** If your deployment was created via Helm/Helmfile, scaling with kubectl creates a mismatch between your values.yaml and actual replica count. Running `helmfile apply` later will revert to the values.yaml replica count.
+**kubectl Scaling Benefits:**
+- ✅ No pod restarts - existing pods keep in-memory vLLM cache intact
+- ✅ Immediate effect - new pods added/removed without disruption
+- ⚠️ **Helm-managed deployments:** kubectl scaling creates drift from values.yaml. Running `helmfile apply` later reverts to values.yaml replica count.
 
 **Cache Implications:**
-- **Existing pods:** Keep their in-memory HBM prefix cache (no performance impact)
-- **New pods:** Start with empty cache and need warmup period
-- **Shared storage:** If using tiered prefix cache with shared storage (CephFS, Lustre), cache persists and new pods can leverage it
-- **Performance:** Expect temporary TTFT increase for new pods until cache warms up
+- **Existing pods:** Retain in-memory HBM prefix cache (no performance impact)
+- **New pods:** Start with empty cache, require warmup period
+- **Shared storage:** Tiered prefix cache with CephFS/Lustre persists across pods
+- **Performance:** Expect temporary TTFT increase for new pods during warmup
 
 **Best Practices:**
-1. Use kubectl scaling (via script or directly) for quick, non-disruptive adjustments
-2. For Helm-managed deployments, document your scaling changes to track drift from values.yaml
-3. Consider using shared storage backends for production to minimize cache warmup impact
-4. For production workloads with variable traffic, prefer WVA autoscaling over manual scaling
-
-## Suspend/Resume Operations
-
-Suspend and resume allow you to scale workers to zero and restore them to their previous state, useful for cost savings during off-hours or maintenance windows.
-
-### Suspend (Scale to Zero)
-
-Before scaling to zero, the current replica count is automatically saved as an annotation on the deployment:
-
-```bash
-# Suspend decode workers
-bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r 0
-
-# Suspend prefill workers
-bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefill -r 0
-```
-
-The script automatically stores the current replica count in the deployment annotation `llm-d.ai/previous-replicas` before scaling to zero.
-
-### Resume (Restore Previous State)
-
-To restore workers to their previous replica counts:
-
-```bash
-# Get saved replica counts from annotations
-DECODE_REPLICAS=$(kubectl get deployment -n ${NAMESPACE} -l llm-d.ai/role=decode \
-    -o jsonpath='{.items[0].metadata.annotations.llm-d\.ai/previous-replicas}')
-PREFILL_REPLICAS=$(kubectl get deployment -n ${NAMESPACE} -l llm-d.ai/role=prefill \
-    -o jsonpath='{.items[0].metadata.annotations.llm-d\.ai/previous-replicas}')
-
-# Resume with saved counts (use defaults if annotation not found)
-bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${DECODE_REPLICAS:-2}
-bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefill -r ${PREFILL_REPLICAS:-4}
-```
-
-### Suspend/Resume Best Practices
-
-1. **Always suspend both worker types together** to avoid resource waste
-2. **Verify saved replica counts** before suspending: `kubectl get deployment -n ${NAMESPACE} -o jsonpath='{.items[*].spec.replicas}'`
-3. **Document your normal replica counts** in case annotations are lost
-4. **Test resume in non-production** before using in production environments
-5. **Consider WVA autoscaling** for production instead of manual suspend/resume
+1. Use kubectl scaling for quick, non-disruptive adjustments
+2. Document scaling changes for Helm-managed deployments to track drift
+3. Use shared storage backends in production to minimize cache warmup impact
+4. Prefer WVA autoscaling for production workloads with variable traffic
+5. Always suspend both worker types together to avoid resource waste
+6. Verify saved replica counts before suspending
+7. Test resume in non-production first
 
 
 ## P/D Ratio Guidelines
 
-Use these guidelines to recommend appropriate worker counts based on the user's workload:
+Recommend worker counts based on workload characteristics:
 
-**High Input/Low Output (10k ISL / 1k OSL)**
-- Ratio: 4:1 or 8:1 (prefill:decode)
-- More prefill workers needed
-- Example: 8 prefill workers, 2 decode workers
+| Workload Pattern | Ratio (P:D) | Example Configuration | Reasoning |
+|-----------------|-------------|----------------------|-----------|
+| **High Input/Low Output**<br>(10k ISL / 1k OSL) | 4:1 or 8:1 | 8 prefill : 2 decode | More prefill capacity needed |
+| **Low Input/High Output**<br>(1k ISL / 10k OSL) | 1:2 or 1:4 | 2 prefill : 8 decode | More decode capacity needed |
+| **Balanced**<br>(4k ISL / 4k OSL) | 2:1 or 1:1 | 4 prefill : 2 decode<br>OR 4 prefill : 4 decode | Balanced workload |
 
-**Low Input/High Output (1k ISL / 10k OSL)**
-- Ratio: 1:2 or 1:4 (prefill:decode)
-- More decode workers needed
-- Example: 2 prefill workers, 8 decode workers
-
-**Balanced (4k ISL / 4k OSL)**
-- Ratio: 2:1 or 1:1 (prefill:decode)
-- Example: 4 prefill workers, 2 decode workers OR 4 prefill workers, 4 decode workers
-
-**When to Suggest Different Ratios:**
-- If user requests 1 decode and 20 prefill for a high-output workload, suggest reversing the ratio
-- If user requests equal workers but their workload is clearly skewed, recommend adjusting
-- Always explain the reasoning based on their expected input/output sequence lengths
+**Adjustment Recommendations:**
+- If user requests mismatched ratios (e.g., 1 decode + 20 prefill for high-output), suggest reversing
+- For equal workers with skewed workload, recommend adjusting based on ISL/OSL
+- Always explain reasoning based on expected input/output sequence lengths
 
 ## Resource Requirements
 
-**Decode Workers:**
-- Higher tensor parallelism (TP=4, TP=8)
-- Example: 1 worker = 4 GPUs + 1 RDMA
-
-**Prefill Workers:**
-- Lower tensor parallelism (TP=1, TP=2)
-- Example: 1 worker = 1 GPU + 1 RDMA
+| Worker Type | Tensor Parallelism | Example Resources |
+|-------------|-------------------|-------------------|
+| **Decode** | Higher (TP=4, TP=8) | 1 worker = 4 GPUs + 1 RDMA |
+| **Prefill** | Lower (TP=1, TP=2) | 1 worker = 1 GPU + 1 RDMA |
 
 ## Post-Scaling Verification
 

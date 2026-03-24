@@ -22,6 +22,19 @@ This guide helps you deploy Workload Variant Autoscaler (WVA) controllers when a
 
 ## Deployment Methods
 
+**Before you begin**, determine which method to use:
+
+1. **Do you have access to the llm-d repository?**
+   - ✅ **Yes** → Use [Method 1: Full WVA Setup](#method-1-full-wva-setup-requires-guidesworkload-autoscaling)
+     - If llm-d is not in the current directory, set the path:
+       ```bash
+       export LLMD_PATH=/path/to/llm-d
+       ```
+   - ❌ **No** → Use [Method 2: Standalone WVA Controller](#method-2-standalone-wva-controller) (recommended for most users)
+
+2. **Need complete manual control?**
+   - Use [Method 3: Manual Deployment](#method-3-manual-deployment-advanced) (advanced users only)
+
 ### Method 1: Full WVA Setup (requires guides/workload-autoscaling)
 
 Use this when you have access to the guides/workload-autoscaling directory from the main llm-d repository:
