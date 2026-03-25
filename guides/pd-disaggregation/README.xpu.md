@@ -37,24 +37,30 @@ If you need to customize the vLLM version or build the image from source, you ca
 #### Intel Data Center GPU Max 1550
 
 ```shell
-# Build with default vLLM version (v0.11.0)
-make image-build DEVICE=xpu VERSION=v0.5.0
+# Build with the default vLLM version from docker/common-versions
+make image-build DEVICE=xpu VERSION=v0.5.1
 ```
 
 #### Intel Corporation Battlemage G21
 
 ```shell
-# Build with default vLLM version (v0.11.0)
+# Build directly from the upstream vLLM Dockerfile.xpu
 git clone https://github.com/vllm-project/vllm.git
-git checkout v0.11.0
-docker build -f docker/Dockerfile.xpu -t ghcr.io/llm-d/llm-d-xpu-dev:v0.5.0 --shm-size=4g .
+cd vllm
+git checkout v0.15.1
+docker build -f docker/Dockerfile.xpu -t ghcr.io/llm-d/llm-d-xpu-dev:v0.5.1 --shm-size=4g .
 ```
 
 ### Available Build Arguments
 
-* `VLLM_VERSION`: vLLM version to build (default: v0.11.0)
-* `PYTHON_VERSION`: Python version (default: 3.12)
-* `ONEAPI_VERSION`: Intel OneAPI toolkit version (default: 2025.1.3-0)
+The upstream vLLM Dockerfile.xpu defines the build arguments. Common ones include:
+
+* `PYTHON_VERSION`
+* `PIP_EXTRA_INDEX_URL`
+* `UCX_VERSION`
+* `NIXL_VERSION`
+
+Refer to <https://github.com/vllm-project/vllm/blob/main/docker/Dockerfile.xpu> for the full list.
 
 **⚠️ Important**:
 
@@ -106,7 +112,7 @@ If you built the Intel XPU image in Step 0, load it into the Kind cluster:
 
 ```shell
 # Load the built image into Kind cluster
-kind load docker-image ghcr.io/llm-d/llm-d-xpu:v0.5.0 --name llm-d-cluster
+kind load docker-image ghcr.io/llm-d/llm-d-xpu:v0.5.1 --name llm-d-cluster
 
 # Or if you built with custom tag
 kind load docker-image llm-d:custom-xpu --name llm-d-cluster
@@ -140,25 +146,16 @@ helmfile apply -f istio.helmfile.yaml --selector kind=gateway-control-plane
 
 ## Step 5: Deploy Intel XPU PD Disaggregation
 
-⚠️ **Important - For Intel BMG GPU Users**: Before running `helmfile apply`, you must update the accelerator type in `ms-pd/values_xpu.yaml`:
+The Intel XPU configuration in `ms-pd/values_xpu.yaml` uses a unified accelerator type that works with all Intel GPU drivers:
 
 ```yaml
-# Edit ms-pd/values_xpu.yaml
-# For Intel Data Center GPU Max 1550 (i915 driver):
+# Unified configuration for all Intel GPUs
 accelerator:
-  type: intel-i915
-  dra: true
-
-# For Intel BMG GPU (Battlemage G21, Xe driver):
-accelerator:
-  type: intel-xe
+  type: intel
   dra: true
 ```
 
-**Accelerator Type by GPU:**
-
-* **Intel Data Center GPU Max 1550**: Use `type: intel-i915` (maps to `gpu.intel.com/i915`)
-* **Intel BMG GPU (Battlemage G21)**: Use `type: intel-xe` (maps to `gpu.intel.com/xe`)
+**Note:** The unified `intel` type works with both Intel Data Center GPU Max 1550 (i915 driver) and Intel BMG GPUs (Battlemage G21, xe driver). Dynamic Resource Allocation (DRA) automatically handles driver selection.
 
 ```shell
 # Navigate to PD disaggregation guide directory
@@ -192,9 +189,9 @@ Expected output:
 
 ```text
 NAME       NAMESPACE   REVISION   STATUS     CHART
-gaie-pd    llm-d-pd    1          deployed   inferencepool-v0.5.1
-infra-pd   llm-d-pd    1          deployed   llm-d-infra-v1.3.0
-ms-pd      llm-d-pd    1          deployed   llm-d-modelservice-v0.2.11
+gaie-pd    llm-d-pd    1          deployed   inferencepool-v1.4.0
+infra-pd   llm-d-pd    1          deployed   llm-d-infra-v1.4.0
+ms-pd      llm-d-pd    1          deployed   llm-d-modelservice-v0.4.7
 ```
 
 ### Check All Resources
@@ -270,6 +267,7 @@ If no HTTPRoute was found, create one manually:
 **_IMPORTANT:_** If you used a custom `$RELEASE_NAME_POSTFIX` environment variable during deployment, you **must** update the HTTPRoute file to match your custom release names before applying it. The HTTPRoute references the Gateway and InferencePool names which include the release name postfix.
 
 For example, if you set `RELEASE_NAME_POSTFIX=pd-xpu`, you need to update the HTTPRoute:
+
 ```shell
 # Update the HTTPRoute to match your release names
 sed -e "s/infra-pd-inference-gateway/infra-pd-xpu-inference-gateway/g" \
@@ -281,6 +279,7 @@ kubectl apply -f httproute-custom.yaml -n llm-d-pd
 ```
 
 If using default release names (no custom `RELEASE_NAME_POSTFIX`), simply apply:
+
 ```shell
 # Apply the HTTPRoute configuration from the PD disaggregation guide
 kubectl apply -f httproute.yaml
