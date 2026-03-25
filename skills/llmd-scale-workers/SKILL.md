@@ -83,11 +83,25 @@ NAMESPACE=${NAMESPACE} bash skills/llmd-scale-workers/scripts/deploy-wva-control
 bash skills/llmd-scale-workers/scripts/create-variantautoscaling.sh \
   ${NAMESPACE} ${DEPLOYMENT_NAME}-autoscaler ${TARGET_DEPLOYMENT}
 
+# If auto-detection fails (unhealthy pods), use manual creation:
+bash skills/llmd-scale-workers/scripts/create-variantautoscaling-manual.sh \
+  ${NAMESPACE} ${DEPLOYMENT_NAME}-autoscaler ${TARGET_DEPLOYMENT} "model/id"
+
+# Fix RBAC if controller shows permission errors
+bash skills/llmd-scale-workers/scripts/fix-wva-rbac.sh ${NAMESPACE}
+
 # If controller doesn't detect resources, fix labels
 bash skills/llmd-scale-workers/scripts/fix-controller-instance-labels.sh ${NAMESPACE}
 ```
 
 **Breaking Change in v0.5.1**: The `scaleTargetRef` field is now **required** in VariantAutoscaling CRD. See [guides/workload-autoscaling/README.wva.md](../../guides/workload-autoscaling/README.wva.md#upgrading) for migration steps.
+
+**Common Issues:**
+- **RBAC errors**: Controller needs pods list/watch permissions → use `fix-wva-rbac.sh`
+- **Unhealthy deployments**: Auto-detection fails → use `create-variantautoscaling-manual.sh` with model ID from prefill pods
+- **Model ID detection**: Query from prefill if decode is down: `kubectl exec deployment/prefill-name -- curl -s localhost:8000/v1/models`
+
+**Troubleshooting Guide**: See [examples/troubleshooting-wva-setup.md](examples/troubleshooting-wva-setup.md) for complete workflows and real-world examples.
 
 #### Option B: HPA + IGW Metrics (Single-Model Deployments)
 
