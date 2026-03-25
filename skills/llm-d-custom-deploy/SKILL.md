@@ -192,6 +192,12 @@ modelService:
 
 **CRITICAL: Actually execute the deployment commands, don't just create scripts.**
 
+**Pre-deployment checks:**
+- Ensure helmfile uses `.gotmpl` extension if using Go templates
+- Copy gateway config files to workspace (don't reference external paths)
+- Create required namespaces (target + llm-d-monitoring if using autoscaler)
+- Create Prometheus CA placeholder: `echo "# placeholder" > /tmp/prometheus-ca.crt`
+
 1. **Navigate to workspace:**
    ```bash
    cd deployments/deploy-{namespace}-{timestamp}
@@ -205,11 +211,14 @@ modelService:
    Add environment flags based on detected configuration:
    - Hardware: `-e cuda`, `-e tpu`, `-e xpu`, `-e hpu`
    - Gateway: `-e istio`, `-e kgateway`, `-e agentgateway`
+   
+   **If CRD conflict occurs:** Delete CRD and retry: `kubectl delete crd variantautoscalings.llmd.ai`
 
 3. **Monitor deployment progress:**
    - Watch pods starting: `kubectl get pods -n {namespace} -w`
    - Wait for all pods to reach Running state
    - Check for any errors or issues
+   - Note: Autoscaler pods may crash (known issue) - core inference unaffected
 
 4. **Apply HTTPRoute:**
    Once helmfile deployment completes and pods are running:
@@ -404,28 +413,46 @@ DestinationRule optimizes connection handling to the EPP service for high-throug
 
 ## Troubleshooting Guidance
 
-**If pods are pending:**
-- Check node resources and capacity
-- Verify node selectors and tolerations
-- Review resource requests vs available resources
+### Deployment Issues
 
-**If pods crash:**
-- Check logs for error messages
-- Verify HuggingFace token is valid
-- Ensure model name and revision are correct
-- Check resource limits aren't too restrictive
+**Helmfile template error (missing config files):**
+- Copy gateway config to workspace: `values/istio-config.yaml`
+- Update helmfile to reference local copy
 
-**If routing doesn't work:**
-- Verify gateway is programmed
-- Check HTTPRoute is accepted
-- Confirm backend services exist
-- Test internal connectivity first
+**Helmfile syntax error ("Add the .gotmpl file extension"):**
+- Rename: `mv helmfile.yaml helmfile.yaml.gotmpl`
 
-**If performance is poor:**
-- Review resource allocation
-- Check for resource contention
-- Verify hardware is being utilized
-- Consider scaling or optimization
+**CRD conflict:**
+- Delete and retry: `kubectl delete crd variantautoscalings.llmd.ai`
+
+**HPA minReplicas validation error:**
+- Set `minReplicas: 1` (Kubernetes requires ≥1)
+- Use WVA's `scaleToZero: true` for scale-to-zero
+
+**Missing llm-d-monitoring namespace:**
+- Create: `kubectl create namespace llm-d-monitoring`
+
+**Workload autoscaler CrashLoopBackOff:**
+- Known issue: `-watch-namespace` flag removed in newer versions
+- Core inference unaffected - model serving works normally
+- Workaround: Use HPA only or manual scaling
+
+### Runtime Issues
+
+**Pods pending:**
+- Check GPU availability: `kubectl describe nodes | grep nvidia.com/gpu`
+
+**Pods crash:**
+- Check logs: `kubectl logs <pod> -c vllm`
+- Verify HF token and model name
+
+**Model loading slow:**
+- Normal for large models (5-10 min for 100B+)
+- Monitor: `kubectl logs <pod> -c vllm -f`
+
+**Routing not working:**
+- Verify gateway programmed: `kubectl get gateway`
+- Check HTTPRoute accepted: `kubectl describe httproute`
 
 
 ## When to Use This Skill
