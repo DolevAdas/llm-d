@@ -49,7 +49,8 @@ Do not stop after creating files - always execute the deployment and validate it
   - Work with files from internet (fetch specific files as needed) form https://github.com/llm-d/llm-d,
   
 **Set up workspace:**
-- Create deployment workspace: `deployments/deploy-{namespace}-{timestamp}/`
+- Naming convention: `{model-short-name}-{namespace}-{DDMMYYYY}` (e.g., `qwen25-llmd-25032026`)
+- Create deployment workspace: `deployments/deploy-{namespace}-{model}-{timestamp}/`
 - This is where all custom files will be created
 - Original repository files are never modified
 
@@ -66,6 +67,7 @@ Execute detection commands automatically:
 3. **Detect hardware:** Query nodes for GPUs, TPUs, accelerators with capacity and labels
 4. **Detect gateway providers:** Check for Istio, Gateway API CRDs, gateway pods
 5. **Detect storage classes:** List available storage classes and identify default
+7. **Detect RDMA/network resources:** Check if RDMA/InfiniBand is available: `kubectl get nodes -o json | jq '.items[].status.allocatable | select(."rdma/ib" != null)'`
 6. **Detect existing resources:** Check for llm-d deployments, HF token secret, PVCs
 
 **Step 2.2: Present Detected Configuration**
@@ -76,6 +78,7 @@ Show detected configuration clearly:
 - Hardware: GPU/TPU/CPU types and counts per node
 - Gateway provider: Istio/K-Gateway/Agent Gateway/GKE Gateway
 - Storage: Available storage classes and default
+- RDMA availability: Present/Absent (impacts P/D disaggregation networking)
 - Existing resources: Any llm-d components already deployed
 
 **Step 2.3: Ask ONLY for Missing Information**
@@ -140,6 +143,8 @@ deployments/deploy-{namespace}-{timestamp}/
    - Resource requests/limits
    - Hardware-specific settings
    - Scaling parameters
+   - **CRITICAL**: Remove `rdma/ib` resource requests if RDMA not detected in cluster
+   - **CRITICAL**: For models >30B, increase startup probe: `failureThreshold: 120, periodSeconds: 30`
    - Storage configuration
 
 **Example customizations:**
@@ -218,6 +223,8 @@ modelService:
    - Watch pods starting: `kubectl get pods -n {namespace} -w`
    - Wait for all pods to reach Running state
    - Check for any errors or issues
+   - **Note**: Large models (>30B) may take 5-10 minutes to load. CrashLoopBackOff during initial load is expected.
+   - Clean up old pending pods: `kubectl delete pod -n {namespace} --field-selector status.phase=Pending`
    - Note: Autoscaler pods may crash (known issue) - core inference unaffected
 
 4. **Apply HTTPRoute:**
