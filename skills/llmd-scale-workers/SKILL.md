@@ -67,7 +67,15 @@ bash skills/llmd-scale-workers/scripts/detect-deployment.sh ${NAMESPACE}
 
 **WVA Autoscaling Setup:**
 ```bash
+# Deploy WVA controller
 NAMESPACE=${NAMESPACE} bash skills/llmd-scale-workers/scripts/deploy-wva-controller.sh
+
+# Create VariantAutoscaling resource
+bash skills/llmd-scale-workers/scripts/create-variantautoscaling.sh \
+  ${NAMESPACE} ${DEPLOYMENT_NAME}-autoscaler ${TARGET_DEPLOYMENT}
+
+# If controller doesn't detect resources, fix labels
+bash skills/llmd-scale-workers/scripts/fix-controller-instance-labels.sh ${NAMESPACE}
 ```
 See [`WVA_CONTROLLER_DEPLOYMENT.md`](skills/llmd-scale-workers/WVA_CONTROLLER_DEPLOYMENT.md) for detailed setup and troubleshooting.
 

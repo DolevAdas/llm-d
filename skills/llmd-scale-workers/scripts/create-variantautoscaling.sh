@@ -30,6 +30,21 @@ echo -e "${BLUE}=== Creating VariantAutoscaling Resource ===${NC}"
 echo -e "Namespace: ${GREEN}${TARGET_NAMESPACE}${NC}"
 echo ""
 
+# Detect controller instance from WVA controller deployment
+echo -e "${YELLOW}Detecting controller instance...${NC}"
+CONTROLLER_INSTANCE=$(kubectl get deployment -n "$TARGET_NAMESPACE" \
+  workload-variant-autoscaler-controller-manager \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="CONTROLLER_INSTANCE")].value}' 2>/dev/null || echo "")
+
+if [ -z "$CONTROLLER_INSTANCE" ]; then
+    # Fallback: use namespace as controller instance
+    CONTROLLER_INSTANCE="$TARGET_NAMESPACE"
+    echo -e "${YELLOW}No CONTROLLER_INSTANCE env found, using namespace: ${CONTROLLER_INSTANCE}${NC}"
+else
+    echo -e "${GREEN}Detected controller instance: ${CONTROLLER_INSTANCE}${NC}"
+fi
+echo ""
+
 # Find a decode deployment to query model ID
 echo -e "${YELLOW}Detecting model ID from vLLM...${NC}"
 DECODE_DEPLOYMENT=$(kubectl get deployments -n "$TARGET_NAMESPACE" -l component=decode -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
@@ -54,13 +69,15 @@ echo -e "${GREEN}Detected model ID: ${MODEL_ID}${NC}"
 echo ""
 
 # Create VariantAutoscaling resource
-echo -e "${YELLOW}Creating VariantAutoscaling resource...${NC}"
+echo -e "${YELLOW}Creating VariantAutoscaling resource with controller-instance label...${NC}"
 cat <<EOF | kubectl apply -f -
 apiVersion: llmd.ai/v1alpha1
 kind: VariantAutoscaling
 metadata:
   name: ${DEPLOYMENT_NAME}
   namespace: ${TARGET_NAMESPACE}
+  labels:
+    wva.llmd.ai/controller-instance: ${CONTROLLER_INSTANCE}
 spec:
   modelID: ${MODEL_ID}
   scaleTargetRef:

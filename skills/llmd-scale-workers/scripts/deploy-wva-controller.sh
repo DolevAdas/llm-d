@@ -209,6 +209,8 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ${TARGET_NAMESPACE}
+        - name: CONTROLLER_INSTANCE
+          value: ${TARGET_NAMESPACE}
         volumeMounts:
         - name: config
           mountPath: /etc/wva

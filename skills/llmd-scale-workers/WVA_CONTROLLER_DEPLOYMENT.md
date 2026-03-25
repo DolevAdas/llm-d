@@ -17,8 +17,12 @@ This guide helps you deploy Workload Variant Autoscaler (WVA) controllers when a
 2. **Controller is namespace-scoped** - Must be deployed to EACH namespace where autoscaling is needed
 3. **Controller watches only its own namespace** by default
 4. **Requires Prometheus access** - Controller queries Prometheus for vLLM metrics
+5. **Uses controller-instance labels** - Controller filters resources by matching `wva.llmd.ai/controller-instance` label
 
 **Why namespace-scoped?** Each namespace with llm-d deployments needs its own WVA controller to manage autoscaling independently.
+
+**Controller Instance Filtering:**
+The WVA controller uses the `CONTROLLER_INSTANCE` environment variable to filter which resources it manages. Only VariantAutoscaling resources with a matching `wva.llmd.ai/controller-instance` label will be processed. The scripts automatically set this to the namespace name for simplicity.
 
 ## Deployment Methods
 
@@ -178,32 +182,57 @@ The script automatically:
 
 ## Common Failure Modes and Fixes
 
-**Failure 1: No ConfigMaps**
+**Failure 1: "Inferencepool datastore is empty" / "No active VariantAutoscalings found"**
+```
+Controller logs show no resources found despite resources existing
+```
+**Root Cause:** Missing or mismatched `wva.llmd.ai/controller-instance` label on VariantAutoscaling resources
+
+**Fix:** The controller filters resources by the `CONTROLLER_INSTANCE` environment variable. Ensure:
+1. Controller has `CONTROLLER_INSTANCE` env set (automatically set to namespace by deploy script)
+2. VariantAutoscaling has matching `wva.llmd.ai/controller-instance` label (automatically added by create script)
+
+To fix existing resources:
+```bash
+# Get controller instance
+CONTROLLER_INSTANCE=$(kubectl get deployment -n ${NAMESPACE} \
+  workload-variant-autoscaler-controller-manager \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="CONTROLLER_INSTANCE")].value}')
+
+# Add label to existing VariantAutoscaling
+kubectl label variantautoscaling -n ${NAMESPACE} <name> \
+  wva.llmd.ai/controller-instance=${CONTROLLER_INSTANCE} --overwrite
+```
+
+**Failure 2: No ConfigMaps**
 ```
 failed to load config: prometheus configuration is required
 ```
-**Fix:** Copy ConfigMaps from working namespace (see steps above)
+**Fix:** ConfigMaps are automatically created by deploy-wva-controller.sh script
 
-**Failure 2: Missing Prometheus CA**
+**Failure 3: Missing Prometheus CA**
 ```
 open /etc/ssl/certs/prometheus-ca.crt: no such file
 ```
-**Fix:** Ensure workload-variant-autoscaler-prometheus-ca ConfigMap exists and is mounted
+**Fix:** The deployment uses `insecureSkipVerify: true` by default, so this warning can be ignored
 
-**Failure 3: Prometheus 403 Forbidden**
+**Failure 4: Prometheus 403 Forbidden**
 ```
 Prometheus API validation failed, retrying - {"query: ": "up", "error": "client_error: client error: 403"}
 ```
 **Fix:** Create cluster-level RBAC for Prometheus access (requires cluster-admin)
+```bash
+bash skills/llmd-scale-workers/scripts/create-wva-cluster-rbac.sh ${NAMESPACE}
+```
 
-**Failure 4: Immutable selector error**
+**Failure 5: Immutable selector error**
 ```
 field is immutable
 ```
 **Fix:** Delete and recreate the deployment:
 ```bash
 kubectl delete deployment -n ${NAMESPACE} workload-variant-autoscaler-controller-manager
-kubectl apply -f /tmp/wva-deployment-final.yaml
+bash skills/llmd-scale-workers/scripts/deploy-wva-controller.sh ${NAMESPACE}
 ```
 
 ## Quick Reference
