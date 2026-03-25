@@ -150,6 +150,18 @@ rules:
 - apiGroups: ["llmd.ai"]
   resources: ["variantautoscalings", "variantautoscalings/status"]
   verbs: ["*"]
+- apiGroups: ["inference.networking.k8s.io"]
+  resources: ["inferencepools"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["inference.networking.x-k8s.io"]
+  resources: ["inferencepools"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["monitoring.coreos.com"]
+  resources: ["servicemonitors"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
 EOF
 echo -e "${GREEN}✓ Role created${NC}"
 echo ""

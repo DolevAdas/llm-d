@@ -182,9 +182,28 @@ The script automatically:
 
 ## Common Failure Modes and Fixes
 
-**Failure 1: "Inferencepool datastore is empty" / "No active VariantAutoscalings found"**
+**Failure 1: "Inferencepool datastore is empty" - API Group Mismatch**
 ```
-Controller logs show no resources found despite resources existing
+Controller logs: "Inferencepool datastore is empty - skipping processing inactive variant"
+Controller startup shows: "Starting EventSource ... inference.networking.x-k8s.io ... *v1alpha2.InferencePool"
+```
+**Root Cause:** The WVA controller v0.5.1 is hardcoded to watch `inference.networking.x-k8s.io/v1alpha2` InferencePools, but your deployment uses `inference.networking.k8s.io/v1` InferencePools (the stable GA API).
+
+**This is a controller version incompatibility issue.** The controller code needs to be updated to watch the correct API group.
+
+**Workaround Options:**
+1. **Use manual scaling instead** (recommended for production):
+   ```bash
+   bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT}
+   ```
+
+2. **Request controller upgrade** from the llm-d team to support `inference.networking.k8s.io/v1` API
+
+3. **Check if newer WVA controller version exists** that supports the GA InferencePool API
+
+**Failure 2: "No active VariantAutoscalings found" - Missing controller-instance Label**
+```
+Controller logs show no resources found despite VariantAutoscaling existing
 ```
 **Root Cause:** Missing or mismatched `wva.llmd.ai/controller-instance` label on VariantAutoscaling resources
 
