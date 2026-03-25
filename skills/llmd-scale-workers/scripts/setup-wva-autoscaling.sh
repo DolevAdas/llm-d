@@ -24,7 +24,7 @@ NC='\033[0m' # No Color
 # Default values
 DEFAULT_NAMESPACE="llm-d-autoscaler"
 DEFAULT_MON_NS="llm-d-monitoring"
-WVA_VERSION="v0.5.0"
+WVA_VERSION="v0.5.1"
 
 echo -e "${BLUE}=== WVA Automatic Scaling Setup ===${NC}"
 echo ""
@@ -196,6 +196,7 @@ fi
 
 echo ""
 echo -e "${GREEN}Step 2: Installing WVA CRDs...${NC}"
+echo -e "${YELLOW}Note: WVA v0.5.1 requires scaleTargetRef field in VariantAutoscaling resources${NC}"
 kubectl apply -f https://raw.githubusercontent.com/llm-d-incubation/workload-variant-autoscaler/${WVA_VERSION}/charts/workload-variant-autoscaler/crds/llmd.ai_variantautoscalings.yaml
 
 echo ""

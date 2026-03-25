@@ -70,6 +70,7 @@ echo ""
 
 # Create VariantAutoscaling resource
 echo -e "${YELLOW}Creating VariantAutoscaling resource with controller-instance label...${NC}"
+echo -e "${BLUE}Note: v0.5.1 requires scaleTargetRef field (breaking change from v0.4.1)${NC}"
 cat <<EOF | kubectl apply -f -
 apiVersion: llmd.ai/v1alpha1
 kind: VariantAutoscaling

@@ -1,9 +1,11 @@
 ---
 name: llm-d-scale-workers
-description: Execute scaling actions for llm-d prefill/decode workers on Kubernetes/OpenShift. Supports manual scaling (immediate adjustments), automatic WVA autoscaling (continuous saturation-based), and suspend/resume operations. Use for handling load changes, optimizing worker ratios, cost savings, or setting up autoscaling.
+description: Execute scaling actions for llm-d prefill/decode workers on Kubernetes/OpenShift. Supports manual scaling (immediate adjustments), automatic WVA autoscaling (continuous saturation-based), HPA with IGW metrics, and suspend/resume operations. Use for handling load changes, optimizing worker ratios, cost savings, or setting up autoscaling.
 ---
 
 # llm-d Worker Scaling Skill
+
+> **Version Compatibility**: This skill supports **WVA v0.5.1**. Ensure all version references match this version for compatibility.
 
 ## 📋 Command Execution Notice
 
@@ -30,7 +32,8 @@ description: Execute scaling actions for llm-d prefill/decode workers on Kuberne
 
 Scale prefill and decode workers in existing llm-d deployments without full redeployment:
 - **Manual scaling** - Immediate adjustments via scripts or kubectl
-- **Automatic scaling (WVA)** - Continuous saturation-based autoscaling for production
+- **Automatic scaling (WVA)** - Continuous saturation-based autoscaling for multi-variant deployments
+- **HPA + IGW Metrics** - Native Kubernetes HPA with Inference Gateway metrics for single-model deployments
 - **Suspend/Resume** - Scale to zero for cost savings, restore to previous state
 
 Works with P/D disaggregation, standard inference, and LeaderWorkerSet deployments.
@@ -40,7 +43,8 @@ Works with P/D disaggregation, standard inference, and LeaderWorkerSet deploymen
 | Method | Use Cases |
 |--------|-----------|
 | **Manual Scaling** | Quick adjustments for known workload changes<br>Development/testing environments<br>P/D disaggregation or Wide-EP deployments<br>Immediate, predictable control needed |
-| **Automatic Scaling (WVA)** | Production with variable traffic patterns<br>Hands-off optimization based on saturation<br>Intelligent Inference Scheduling deployments only<br>Reduce operational overhead |
+| **Automatic Scaling (WVA)** | Multi-variant deployments on heterogeneous hardware<br>Cost-aware capacity allocation across variants<br>Intelligent Inference Scheduling deployments only<br>Requires WVA controller and VariantAutoscaling CRD |
+| **HPA + IGW Metrics** | Single-model deployments on homogeneous hardware<br>Native Kubernetes HPA with queue depth/running requests<br>Simpler setup than WVA (no additional controllers)<br>Supports scale-to-zero with HPA alpha features or KEDA |
 | **Suspend/Resume** | Off-hours cost savings<br>Maintenance windows or planned downtime<br>Free up cluster resources without deletion |
 
 ## Prerequisites
@@ -65,21 +69,48 @@ bash skills/llmd-scale-workers/scripts/detect-deployment.sh ${NAMESPACE}
 
 ### Step 2: Execute Scaling Action
 
-**WVA Autoscaling Setup:**
+**Choose Your Autoscaling Approach:**
+
+#### Option A: WVA Autoscaling (Multi-Variant Deployments)
+
+Best for: Multiple models/variants on shared GPU hardware with cost optimization
+
 ```bash
-# Deploy WVA controller
+# Deploy WVA controller (v0.5.1)
 NAMESPACE=${NAMESPACE} bash skills/llmd-scale-workers/scripts/deploy-wva-controller.sh
 
-# Create VariantAutoscaling resource
+# Create VariantAutoscaling resource (requires scaleTargetRef in v0.5.1)
 bash skills/llmd-scale-workers/scripts/create-variantautoscaling.sh \
   ${NAMESPACE} ${DEPLOYMENT_NAME}-autoscaler ${TARGET_DEPLOYMENT}
 
 # If controller doesn't detect resources, fix labels
 bash skills/llmd-scale-workers/scripts/fix-controller-instance-labels.sh ${NAMESPACE}
 ```
-See [`WVA_CONTROLLER_DEPLOYMENT.md`](skills/llmd-scale-workers/WVA_CONTROLLER_DEPLOYMENT.md) for detailed setup and troubleshooting.
 
-**Manual Scaling:**
+**Breaking Change in v0.5.1**: The `scaleTargetRef` field is now **required** in VariantAutoscaling CRD. See [guides/workload-autoscaling/README.wva.md](../../guides/workload-autoscaling/README.wva.md#upgrading) for migration steps.
+
+#### Option B: HPA + IGW Metrics (Single-Model Deployments)
+
+Best for: Homogeneous hardware, simpler setup, native Kubernetes HPA
+
+```bash
+# 1. Enable flow control in EndpointPickerConfig
+kubectl patch endpointpickerconfig <name> -n ${NAMESPACE} --type=merge -p '{"featureGates":["flowControl"]}'
+
+# 2. Install Prometheus Adapter
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm install prometheus-adapter prometheus-community/prometheus-adapter \
+  --namespace monitoring --create-namespace \
+  --set prometheus.url=http://prometheus-operated.monitoring.svc \
+  --set prometheus.port=9090
+
+# 3. Configure adapter rules (see guides/workload-autoscaling/README.hpa-igw.md)
+# 4. Create HPA resource targeting igw_queue_depth and igw_running_requests metrics
+```
+
+See [guides/workload-autoscaling/README.hpa-igw.md](../../guides/workload-autoscaling/README.hpa-igw.md) for detailed HPA setup.
+
+#### Manual Scaling (All Deployment Types)
 ```bash
 bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t decode -r ${COUNT}
 ```
