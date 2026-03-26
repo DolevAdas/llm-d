@@ -5,24 +5,40 @@ description: Modify cache memory settings in existing llm-d deployments without 
 
 # llm-d Cache Configuration Skill
 
+## 📋 Command Execution Notice
+
+**Before executing any command, I will:**
+1. **Explain what the command does** - Clear description of purpose and expected outcome
+2. **Show the actual command** - The exact command to be executed
+3. **Explain why it's needed** - How it fits into the workflow
+
+> ## 🔔 ALWAYS NOTIFY BEFORE CREATING RESOURCES
+>
+> **RULE**: Before creating ANY resource (namespaces, files, Kubernetes objects), notify the user first.
+>
+> **Format**: "I am about to create `<resource-type>` named `<name>` because `<reason>`. Proceeding now."
+>
+> **Never silently create resources.** Check existence first, then notify before acting.
+
+## Critical Rules
+
+1. **Do NOT change cluster-level definitions** - All changes must be within the designated namespace. Never modify cluster-wide resources. Always scope commands with `-n ${NAMESPACE}`.
+
+2. **Do NOT modify existing repository code** - Only create new files. Never edit pre-existing repository files.
+
+3. **ALWAYS use existing scripts** from `skills/llmd-cache-config/scripts/` - Never create new scripts or documentation files.
+
 ## Overview
 
-Modify cache memory settings in existing llm-d deployments to optimize performance without requiring full redeployment. Supports adjusting GPU memory utilization, KV cache capacity, shared memory (SHM), block size, and maximum context length.
+Modify cache settings in existing llm-d deployments: GPU memory utilization, block size, max context length, and shared memory (SHM). Changes apply via rolling updates with automatic backups.
 
 ## When to Use
 
-- Increase KV cache capacity for better prefix cache hit rates
-- Adjust GPU memory utilization to balance model size vs cache space
-- Modify shared memory for multi-process scenarios
-- Change block size for finer-grained prefix matching
-- Extend context length for longer prompts/responses
-- Optimize cache settings for specific workload patterns
-
-## Prerequisites
-
-- Existing llm-d deployment in Kubernetes/OpenShift
-- kubectl or oc CLI with appropriate permissions
-- Access to deployment configuration files (ms-values.yaml)
+- **Low cache hit rate** → Reduce GPU memory, decrease block size
+- **OOM errors** → Reduce GPU memory, decrease max length
+- **Long contexts needed** → Increase max length, reduce GPU memory, increase SHM
+- **High throughput** → Increase GPU memory, standard block size
+- **Multi-GPU (TP>2)** → Increase SHM based on formula
 
 ## Workflow
 
@@ -32,17 +48,15 @@ Modify cache memory settings in existing llm-d deployments to optimize performan
 bash skills/llmd-cache-config/scripts/show-current-config.sh ${NAMESPACE}
 ```
 
-Shows current cache settings, resource usage, and deployment info.
+### 2. Update Settings
 
-### 2. Update Cache Settings
-
-**Preview changes first:**
+**Preview first:**
 ```bash
 bash skills/llmd-cache-config/scripts/update-cache-config.sh \
   -n ${NAMESPACE} -g 0.90 -b 32 --dry-run
 ```
 
-**Apply changes:**
+**Apply:**
 ```bash
 bash skills/llmd-cache-config/scripts/update-cache-config.sh \
   -n ${NAMESPACE} -g 0.90 -b 32
@@ -50,207 +64,126 @@ bash skills/llmd-cache-config/scripts/update-cache-config.sh \
 
 **Options:**
 - `-g <value>` - GPU memory utilization (0.0-1.0)
-- `-b <value>` - Block size in tokens
+- `-b <value>` - Block size in tokens (16-128)
 - `-m <value>` - Max model length in tokens
 - `-s <value>` - Shared memory size (e.g., 20Gi, 30Gi)
 
+### 3. Verify
+
+```bash
+kubectl get pods -n ${NAMESPACE}
+kubectl logs -l llm-d.ai/role=decode -n ${NAMESPACE} | grep -E "gpu_memory_utilization|block_size"
+```
+
 ## Cache Parameters
 
-### GPU Memory Utilization
-**Parameter**: `--gpu-memory-utilization`  
-**Default**: 0.95 (95%)  
-**Range**: 0.0-1.0  
-**Purpose**: Controls fraction of GPU memory for model vs KV cache
-
-Lower values = more KV cache space
-
-### Block Size
-**Parameter**: `--block-size`  
-**Default**: 64 tokens  
-**Range**: 16-128  
-**Purpose**: KV cache granularity for prefix matching
-
-Smaller blocks = finer prefix matching, more overhead
-
-### Max Model Length
-**Parameter**: `--max-model-len`  
-**Default**: Model-specific  
-**Purpose**: Maximum context window (prompt + response)
-
-Longer contexts = more memory per request
-
-### Shared Memory (SHM)
-**Parameter**: `sizeLimit` in shm volume  
-**Default**: 20Gi  
-**Purpose**: Inter-process communication for multi-GPU setups
-
-Formula: `10Gi + (5Gi × tensor_parallelism)`
+| Parameter | Default | Range | Purpose |
+|-----------|---------|-------|---------|
+| **GPU Memory Utilization** (`-g`) | 0.95 | 0.0-1.0 | Model vs KV cache allocation. Lower = more cache |
+| **Block Size** (`-b`) | 64 | 16-128 | Prefix matching granularity. Smaller = finer matching |
+| **Max Model Length** (`-m`) | Model-specific | - | Context window size. Higher = more memory per request |
+| **Shared Memory** (`-s`) | 20Gi | 10Gi-50Gi | IPC for multi-GPU. Formula: `10Gi + (5Gi × TP)` |
 
 ## Common Scenarios
 
 ### Increase Cache Hit Rate
-**Goal**: Better prefix cache performance
-
 ```bash
 bash skills/llmd-cache-config/scripts/update-cache-config.sh \
   -n ${NAMESPACE} -g 0.88 -b 32
 ```
-
-**Changes:**
-- GPU memory: 0.95 → 0.88 (more cache space)
-- Block size: 64 → 32 (finer granularity)
+Changes: GPU 0.95→0.88 (more cache), block 64→32 (finer matching)
 
 ### Support Longer Contexts
-**Goal**: Handle longer prompts/responses
-
 ```bash
 bash skills/llmd-cache-config/scripts/update-cache-config.sh \
   -n ${NAMESPACE} -m 16384 -g 0.85 -s 30Gi
 ```
-
-**Changes:**
-- Max length: 8192 → 16384 (double context)
-- GPU memory: 0.95 → 0.85 (accommodate longer contexts)
-- SHM: 20Gi → 30Gi (larger batches)
+Changes: Max length 8192→16384, GPU 0.95→0.85, SHM 20Gi→30Gi
 
 ### Maximize Throughput
-**Goal**: More concurrent requests
-
 ```bash
 bash skills/llmd-cache-config/scripts/update-cache-config.sh \
   -n ${NAMESPACE} -g 0.95 -b 64
 ```
+Changes: GPU 0.90→0.95 (more capacity), block 32→64 (standard)
 
-**Changes:**
-- GPU memory: 0.90 → 0.95 (maximize model capacity)
-- Block size: 32 → 64 (standard granularity)
+### Fix OOM Errors
+```bash
+bash skills/llmd-cache-config/scripts/update-cache-config.sh \
+  -n ${NAMESPACE} -g 0.85
+```
+Changes: GPU 0.95→0.85 (reduce memory pressure)
 
-### High Tensor Parallelism
-**Goal**: Support TP=8 for large models
-
+### High Tensor Parallelism (TP=8)
 ```bash
 bash skills/llmd-cache-config/scripts/update-cache-config.sh \
   -n ${NAMESPACE} -s 50Gi
 ```
+Changes: SHM 20Gi→50Gi (10Gi + 5Gi × 8)
 
-**Changes:**
-- SHM: 20Gi → 50Gi (10Gi + 5Gi × 8)
+## Tuning Guidelines
 
-## Monitoring
+**GPU Memory Utilization by Model Size:**
+- Small (<20B): 0.95
+- Medium (20-70B): 0.90-0.93
+- Large (70B+): 0.85-0.90
+- MoE: 0.90-0.92
 
-### Key Metrics
+**Block Size by Prefix Length:**
+- Short (<100 tokens): 16-32
+- Medium (100-500 tokens): 32-64
+- Long (>500 tokens): 64-128
+- Mixed: 32-64
 
-**KV Cache Utilization:**
-```bash
-kubectl logs -l llm-d.ai/role=decode -n ${NAMESPACE} | grep "kv_cache_usage"
-```
-Target: 60-80% for optimal performance
-
-**GPU Memory:**
-```bash
-kubectl exec <pod> -n ${NAMESPACE} -- nvidia-smi
-```
-Target: 85-95% utilization
-
-**Cache Hit Rate** (if using prefix caching):
-```bash
-kubectl logs -l inferencepool=<pool> -n ${NAMESPACE} | grep "cache_hit_rate"
-```
-Target: >50% for workloads with repeated prefixes
-
-### Resource Usage
-```bash
-kubectl top pods -n ${NAMESPACE}
-```
-
-## Troubleshooting
-
-### OOM (Out of Memory) Errors
-**Symptoms**: Pods crash with OOMKilled
-
-**Solutions:**
-1. Reduce GPU memory utilization: `-g 0.90` → `-g 0.85`
-2. Reduce max model length if set too high
-3. Check actual GPU memory: `kubectl exec <pod> -- nvidia-smi`
-
-### Low Cache Hit Rate
-**Symptoms**: Poor performance despite prefix caching
-
-**Solutions:**
-1. Decrease block size: `-b 64` → `-b 32`
-2. Verify block size matches in gaie-values.yaml
-3. Check if workload has repeated prefixes
-
-### Shared Memory Errors
-**Symptoms**: Errors about `/dev/shm` being full
-
-**Solutions:**
-1. Increase SHM size: `-s 30Gi` → `-s 40Gi`
-2. Verify SHM is mounted: `kubectl exec <pod> -- df -h /dev/shm`
-
-### Pods Not Restarting
-**Symptoms**: Old configuration still in use
-
-**Solutions:**
-1. Force restart: `kubectl rollout restart deployment/<name> -n ${NAMESPACE}`
-2. Check Helm release: `helm list -n ${NAMESPACE}`
-
-## Performance Tuning Guidelines
-
-### Memory Allocation Strategy
-
-**Total GPU Memory = Model Weights + KV Cache + Overhead**
-
-**Recommended GPU Memory Utilization:**
-- Small models (<20B): 0.95
-- Medium models (20-70B): 0.90-0.93
-- Large models (70B+): 0.85-0.90
-- MoE models: 0.90-0.92
-
-### Block Size Selection
-
-**Guidelines:**
-- Short prefixes (<100 tokens): 16-32
-- Medium prefixes (100-500 tokens): 32-64
-- Long prefixes (>500 tokens): 64-128
-- Mixed workload: 32-64
-
-### Shared Memory Sizing
-
-**Formula**: `SHM = 10Gi + (5Gi × tensor_parallelism)`
-
-**Examples:**
+**Shared Memory by Tensor Parallelism:**
 - TP=1: 15Gi
 - TP=2: 20Gi
 - TP=4: 30Gi
 - TP=8: 50Gi
 
+## Troubleshooting
+
+**OOM Errors**: Reduce GPU memory (`-g 0.85`), reduce max length, check `nvidia-smi`
+
+**Low Cache Hit Rate**: Decrease block size (`-b 32`), verify block size matches in gaie-values.yaml
+
+**SHM Errors**: Increase SHM (`-s 40Gi`), verify with `kubectl exec <pod> -- df -h /dev/shm`
+
+**Pods Not Restarting**: Force restart `kubectl rollout restart deployment/<name> -n ${NAMESPACE}`
+
+## Monitoring
+
+**KV Cache Usage:**
+```bash
+kubectl logs -l llm-d.ai/role=decode -n ${NAMESPACE} | grep "kv_cache_usage"
+```
+Target: 60-80%
+
+**GPU Memory:**
+```bash
+kubectl exec <pod> -n ${NAMESPACE} -- nvidia-smi
+```
+Target: 85-95%
+
+**Cache Hit Rate:**
+```bash
+kubectl logs -l inferencepool=<pool> -n ${NAMESPACE} | grep "cache_hit_rate"
+```
+Target: >50% for prefix caching workloads
+
 ## Safety Checklist
 
-Before modifying cache settings:
-- ✅ Check current configuration with show-current-config.sh
-- ✅ Use --dry-run to preview changes
-- ✅ Understand workload characteristics
-- ✅ Have rollback plan (backups created automatically)
-- ✅ Monitor during rollout
-- ✅ Verify settings in pod logs
-- ✅ Test inference after changes
-
-## Scripts Reference
-
-See [scripts/README.md](scripts/README.md) for detailed script documentation.
-
-**Available scripts:**
-- `show-current-config.sh` - Display current cache configuration
-- `update-cache-config.sh` - Update cache settings with rolling update
+- ✅ Check current config first
+- ✅ Use `--dry-run` to preview
+- ✅ Automatic backups in `deployments/<name>/backups/`
+- ✅ Rolling updates maintain availability
+- ✅ Verify settings in pod logs after changes
 
 ## Related Skills
 
-- **llm-d-deployment**: Initial deployment of llm-d stack
-- **llmd-scale-workers**: Scale replicas for throughput
+- **llm-d-deployment**: Initial deployment
+- **llmd-scale-workers**: Scale worker replicas
 
-## Additional Resources
+## Scripts Reference
 
-- [vLLM Memory Management](https://docs.vllm.ai/en/latest/models/performance.html)
-- [Prefix Caching Guide](https://docs.vllm.ai/en/latest/automatic_prefix_caching/apc.html)
-- [llm-d Architecture](https://llm-d.ai/docs/architecture)
+See [scripts/README.md](scripts/README.md) for detailed documentation.
