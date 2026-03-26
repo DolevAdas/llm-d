@@ -75,19 +75,6 @@ kubectl get pods -n ${NAMESPACE}
 kubectl logs -l llm-d.ai/role=decode -n ${NAMESPACE} | grep -E "gpu_memory_utilization|block_size"
 ```
 
-## Cache Parameters
-
-| Parameter | Default | Range | Purpose |
-|-----------|---------|-------|---------|
-| **GPU Memory Utilization** (`-g`) | 0.95 | 0.0-1.0 | Model vs KV cache allocation. Lower = more cache |
-| **Block Size** (`-b`) | 64 | 16-128 | Prefix matching granularity. Smaller = finer matching |
-| **Max Model Length** (`-m`) | Model-specific | - | Context window size. Higher = more memory per request |
-| **Shared Memory** (`-s`) | 20Gi | 10Gi-50Gi | IPC for multi-GPU. Formula: `10Gi + (5Gi × TP)` |
-
-**Note:** When changing block size, also update InferencePool `lruCapacityPerServer` parameter:
-- Formula: `(GPU_blocks × old_block_size) / new_block_size`
-- Example: 9271 blocks @ 128 → 37084 blocks @ 32
-
 ## Common Scenarios
 
 ### Increase Cache Hit Rate
