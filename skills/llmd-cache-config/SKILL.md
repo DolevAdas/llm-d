@@ -26,7 +26,7 @@ description: Modify cache memory settings in existing llm-d deployments without 
 
 2. **Do NOT modify existing repository code** - Only create new files. Never edit pre-existing repository files.
 
-3. **ALWAYS use existing scripts** from `skills/llmd-cache-config/scripts/` - Never create new scripts or documentation files.
+3. **Script modifications** - If existing scripts need updates, copy them to your deployment directory and modify the copy. Never edit scripts in `skills/llmd-cache-config/scripts/` directly.
 
 ## Overview
 
@@ -84,6 +84,10 @@ kubectl logs -l llm-d.ai/role=decode -n ${NAMESPACE} | grep -E "gpu_memory_utili
 | **Max Model Length** (`-m`) | Model-specific | - | Context window size. Higher = more memory per request |
 | **Shared Memory** (`-s`) | 20Gi | 10Gi-50Gi | IPC for multi-GPU. Formula: `10Gi + (5Gi × TP)` |
 
+**Note:** When changing block size, also update InferencePool `lruCapacityPerServer` parameter:
+- Formula: `(GPU_blocks × old_block_size) / new_block_size`
+- Example: 9271 blocks @ 128 → 37084 blocks @ 32
+
 ## Common Scenarios
 
 ### Increase Cache Hit Rate
@@ -92,6 +96,13 @@ bash skills/llmd-cache-config/scripts/update-cache-config.sh \
   -n ${NAMESPACE} -g 0.88 -b 32
 ```
 Changes: GPU 0.95→0.88 (more cache), block 64→32 (finer matching)
+
+**Manual Steps for Non-Standard Deployments:**
+If script fails to find `ms-values.yaml`, manually edit:
+1. Update `values-modelservice.yaml`: Change `--block-size` and `--gpu-memory-utilization` in both decode and prefill sections
+2. Update `values-inferencepool.yaml`: Adjust `lruCapacityPerServer` using formula above
+3. Apply: `cd deployment-dir && helmfile apply -n ${NAMESPACE}`
+4. Verify: `kubectl rollout status deployment/<name> -n ${NAMESPACE}`
 
 ### Support Longer Contexts
 ```bash
