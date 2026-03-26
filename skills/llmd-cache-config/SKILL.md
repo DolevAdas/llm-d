@@ -38,7 +38,7 @@ Modify cache settings in existing llm-d deployments: GPU memory utilization, blo
 - **OOM errors** → Reduce GPU memory, decrease max length
 - **Long contexts needed** → Increase max length, reduce GPU memory, increase SHM
 - **High throughput** → Increase GPU memory, standard block size
-- **Multi-GPU (TP>2)** → Increase SHM based on formula
+- **Multi-GPU (TP>2)** → Increase SHM as needed
 
 ## Workflow
 
@@ -87,7 +87,7 @@ Changes: GPU 0.95→0.88 (more cache), block 64→32 (finer matching)
 **Manual Steps for Non-Standard Deployments:**
 If script fails to find `ms-values.yaml`, manually edit:
 1. Update `values-modelservice.yaml`: Change `--block-size` and `--gpu-memory-utilization` in both decode and prefill sections
-2. Update `values-inferencepool.yaml`: Adjust `lruCapacityPerServer` using formula above
+2. Update `values-inferencepool.yaml`: Adjust `lruCapacityPerServer` as needed
 3. Apply: `cd deployment-dir && helmfile apply -n ${NAMESPACE}`
 4. Verify: `kubectl rollout status deployment/<name> -n ${NAMESPACE}`
 
@@ -112,32 +112,12 @@ bash skills/llmd-cache-config/scripts/update-cache-config.sh \
 ```
 Changes: GPU 0.95→0.85 (reduce memory pressure)
 
-### High Tensor Parallelism (TP=8)
+### Adjust Shared Memory for Multi-GPU
 ```bash
 bash skills/llmd-cache-config/scripts/update-cache-config.sh \
   -n ${NAMESPACE} -s 50Gi
 ```
-Changes: SHM 20Gi→50Gi (10Gi + 5Gi × 8)
-
-## Tuning Guidelines
-
-**GPU Memory Utilization by Model Size:**
-- Small (<20B): 0.95
-- Medium (20-70B): 0.90-0.93
-- Large (70B+): 0.85-0.90
-- MoE: 0.90-0.92
-
-**Block Size by Prefix Length:**
-- Short (<100 tokens): 16-32
-- Medium (100-500 tokens): 32-64
-- Long (>500 tokens): 64-128
-- Mixed: 32-64
-
-**Shared Memory by Tensor Parallelism:**
-- TP=1: 15Gi
-- TP=2: 20Gi
-- TP=4: 30Gi
-- TP=8: 50Gi
+Changes: SHM 20Gi→50Gi (adjust based on your tensor parallelism configuration)
 
 ## Troubleshooting
 
@@ -155,19 +135,19 @@ Changes: SHM 20Gi→50Gi (10Gi + 5Gi × 8)
 ```bash
 kubectl logs -l llm-d.ai/role=decode -n ${NAMESPACE} | grep "kv_cache_usage"
 ```
-Target: 60-80%
+Monitor and adjust based on workload
 
 **GPU Memory:**
 ```bash
 kubectl exec <pod> -n ${NAMESPACE} -- nvidia-smi
 ```
-Target: 85-95%
+Monitor and adjust based on workload
 
 **Cache Hit Rate:**
 ```bash
 kubectl logs -l inferencepool=<pool> -n ${NAMESPACE} | grep "cache_hit_rate"
 ```
-Target: >50% for prefix caching workloads
+Monitor and adjust based on workload
 
 ## Safety Checklist
 
