@@ -335,6 +335,9 @@ echo "Deployment complete!"
 ---
 
 
+## Troubleshooting Guidance
+
+For detailed troubleshooting guidance, see [TROUBLESHOOTING.md](./references/TROUBLESHOOTING.md).
 
 ### Additional Resources
 

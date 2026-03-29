@@ -420,7 +420,7 @@ DestinationRule optimizes connection handling to the EPP service for high-throug
 
 ## Troubleshooting Guidance
 
-For detailed troubleshooting guidance, see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
+For detailed troubleshooting guidance, see [TROUBLESHOOTING.md](./references/TROUBLESHOOTING.md).
 
 
 ## When to Use This Skill
