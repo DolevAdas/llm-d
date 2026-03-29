@@ -28,6 +28,7 @@ description: Execute scaling actions for llm-d prefill/decode workers on Kuberne
 
 2. **Do NOT modify existing repository code** - Only create new files. Never edit pre-existing repository files. For customization, create new files and reference them.
 
+
 ## Overview
 
 Scale prefill and decode workers in existing llm-d deployments without full redeployment:
@@ -58,7 +59,7 @@ Works with P/D disaggregation, standard inference, and LeaderWorkerSet deploymen
 **CRITICAL RULES:**
 1. **ALWAYS use existing scripts** from `skills/llmd-scale-workers/scripts/`
 2. **NEVER create README.md files** - provide summaries in conversation only
-3. **NEVER create new scripts** - use existing ones
+3. **Script modifications** - If existing scripts need updates, copy them to your deployment directory and modify the copy. Never edit scripts in `scripts/` directly.
 4. **Scripts run non-interactively by default** - designed for automation (use `-i` flag for interactive mode)
 
 ### Step 1: Detect Deployment
@@ -149,7 +150,6 @@ bash skills/llmd-scale-workers/scripts/scale-workers.sh -n ${NAMESPACE} -t prefi
 
 **WRONG:**
 - ❌ Create README.md, monitoring-guide.md, or any documentation files
-- ❌ Create new scripts (use existing ones)
 
 ## Scaling Methods
 
