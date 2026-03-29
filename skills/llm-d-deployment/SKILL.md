@@ -1,6 +1,6 @@
 ---
 name: llm-d-deployment
-description: Configure and deploy llm-d (high-performance distributed LLM inference) on existing Kubernetes and OpenShift clusters using Well-lit Path guides for production-ready LLM serving with optimizations like intelligent inference scheduling, prefill/decode disaggregation, wide expert parallelism, and tiered prefix caching.
+description: Configure and deploy llm-d (high-performance distributed LLM inference) on existing Kubernetes and OpenShift clusters using Well-lit Path guides.Use this skill when users want to deploy llm-d on Kubernetes or OpenShift.
 ---
 
 # llm-d Kubernetes Deployment Skill
@@ -17,16 +17,7 @@ This ensures you understand each step before it happens and can verify the actio
 > ## 🔔 ALWAYS NOTIFY THE USER BEFORE CREATING ANYTHING
 >
 > **RULE**: Before creating ANY resource — including namespaces, PVCs, files, Helm releases, HTTPRoutes, or any Kubernetes object — you MUST first tell the user what you are about to create and why.
->
-> **Format to use before every creation action**:
-> > "I am about to create `<resource-type>` named `<name>` because `<reason>`. Proceeding now."
->
->
-> **Never silently create resources.** If you are unsure whether a resource already exists, check first, then notify before acting.
-
-## What Not To Do
-
-Critical rules to follow when deploying and managing llm-d:
+ Critical rules to follow when deploying and managing llm-d:
 
 1. **Do NOT change cluster-level definitions** 
 All changes must be made exclusively inside the designated project namespace. Never modify cluster-wide resources (e.g., ClusterRoles, ClusterRoleBindings, StorageClasses, Nodes, or any resource outside the target namespace). Scope every `kubectl apply`, `helm install`, and `helmfile apply` command to the target namespace using `-n ${NAMESPACE}`.
@@ -48,10 +39,10 @@ llm-d provides Well-lit Path deployment guides located in the `guides/` director
 
 Activate this skill when users need to:
 - Deploy LLM inference on Kubernetes or OpenShift
-- Optimize LLM serving performance
 - Set up production-ready model serving infrastructure
 - Choose between different deployment strategies
 - Configure hardware-specific deployments (NVIDIA, AMD, Intel, TPU, CPU)
+- Modify existing deployments (change models, adjust features, update configurations)
 
 ## Prerequisites
 
@@ -93,6 +84,12 @@ Use LLMD_PATH environment variable if set; if not set, ask the user for the llm-
 3. Present discovered guides to user:
 
 **Default suggestion**: If `inference-scheduling` guide exists, suggest it as default.
+
+**For deployment modifications** (changing model, features, or configuration):
+- Select the Well-lit Path guide closest to the user's requirements
+- Copy the guide directory to `deployments/` with naming convention: `{model-short-name}-{namespace}-{DDMMYYYY}` (e.g., `qwen25-llmd-25032026`)
+- Modify the copied configuration files as needed
+- Use the modified copy for deployment
 
 ### Step 2: Auto-Detect Current Project/Namespace
 
