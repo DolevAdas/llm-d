@@ -22,11 +22,17 @@ description: Modify cache memory settings in existing llm-d deployments without 
 
 ## Critical Rules
 
-1. **Do NOT change cluster-level definitions** - All changes must be within the designated namespace. Never modify cluster-wide resources. Always scope commands with `-n ${NAMESPACE}`.
+1. **ALWAYS use existing skill scripts first** - Use `show-current-config.sh` and `update-cache-config.sh` before manual edits. Only perform manual edits if scripts fail due to non-standard deployment structure.
 
-2. **Do NOT modify existing repository code** - Only create new files. Never edit pre-existing repository files.
+2. **Check for existing resources** - Before deployment, check for old/conflicting deployments and clean them up. Use `helm list -n ${NAMESPACE}` and `kubectl get all -n ${NAMESPACE}`.
 
-3. **Script modifications** - If existing scripts need updates, copy them to your deployment directory and modify the copy. Never edit scripts in `skills/llmd-cache-config/scripts/` directly.
+3. **Verify cluster resources** - Check available GPU/RDMA resources before applying changes. Use `kubectl describe nodes` to verify capacity.
+
+4. **Do NOT change cluster-level definitions** - All changes must be within the designated namespace. Never modify cluster-wide resources. Always scope commands with `-n ${NAMESPACE}`.
+
+5. **Do NOT modify existing repository code** - Only create new files. Never edit pre-existing repository files.
+
+6. **Script modifications** - If existing scripts need updates, copy them to your deployment directory and modify the copy. Never edit scripts in `skills/llmd-cache-config/scripts/` directly.
 
 ## Overview
 
@@ -186,7 +192,62 @@ If script fails, manually edit configuration files:
 3. Apply: `cd deployment-dir && helmfile apply -n ${NAMESPACE}`
 4. Verify: `kubectl rollout status deployment/<name> -n ${NAMESPACE}`
 
-## Monitoring & Troubleshooting
+## Non-Standard Deployment Patterns
+
+For deployments with custom directory structures or file naming:
+
+**Using Scripts:**
+```bash
+# Specify deployment directory explicitly
+bash skills/llmd-cache-config/scripts/update-cache-config.sh \
+  -d deployments/your-deployment -n ${NAMESPACE} -g 0.95 -b 64
+```
+
+**Manual Updates:**
+1. Locate your ModelService and InferencePool values files
+2. Edit ModelService values for `--block-size` and `--gpu-memory-utilization`
+3. **Important**: When changing block size, recalculate InferencePool cache capacities:
+   - Formula: `new_capacity = old_capacity × (old_block_size / new_block_size)`
+   - Example: 32→64 blocks: GPU cache 31,250→15,625, CPU cache 41,000→20,500
+4. Apply changes: `cd deployment-dir && helmfile apply -n ${NAMESPACE}`
+
+## Validation and Rollback
+
+### Validate Configuration Consistency
+
+Before applying changes, verify:
+```bash
+# Check block size consistency
+kubectl get deployment -n ${NAMESPACE} -o yaml | grep "block-size"
+
+# Verify cache capacity calculations
+kubectl get inferencepool -n ${NAMESPACE} -o yaml | grep "lruCapacityPerServer"
+
+# Check SHM allocation
+kubectl get pods -n ${NAMESPACE} -o yaml | grep -A 2 "shm"
+```
+
+### Rollback Procedure
+
+If changes cause issues:
+```bash
+# Automatic backups are created in deployments/<name>/backups/
+cd deployments/<name>/backups/
+
+# Restore from backup
+cp backup-DDMMYYYY-HHMMSS/ms-values.yaml ../ms-values.yaml
+cp backup-DDMMYYYY-HHMMSS/gaie-values.yaml ../gaie-values.yaml
+
+# Reapply
+cd ..
+helmfile apply -n ${NAMESPACE}
+
+# Verify rollback
+kubectl rollout status deployment/<name> -n ${NAMESPACE}
+kubectl logs -l llm-d.ai/role=decode -n ${NAMESPACE} | grep -E "gpu_memory_utilization|block_size"
+```
+
+## Monitoring
 
 ### Monitoring Commands
 ```bash
@@ -200,17 +261,47 @@ kubectl exec <pod> -n ${NAMESPACE} -- nvidia-smi
 kubectl logs -l inferencepool=<pool> -n ${NAMESPACE} | grep "cache_hit_rate"
 ```
 
-### Common Issues
-- **OOM Errors**: Reduce GPU memory (`-g 0.85`), reduce max length, check `nvidia-smi`
-- **Low Cache Hit Rate**: Decrease block size (`-b 32`), verify block size matches in gaie-values.yaml
-- **SHM Errors**: Increase SHM (`-s 40Gi`), verify with `kubectl exec <pod> -- df -h /dev/shm`
-- **Pods Not Restarting**: Force restart `kubectl rollout restart deployment/<name> -n ${NAMESPACE}`
+## Troubleshooting Guidance
 
-## Safety Checklist
+For detailed troubleshooting guidance, see [TROUBLESHOOTING.md](./references/TROUBLESHOOTING.md).
 
-- ✅ Check current config first
-- ✅ Use `--dry-run` to preview
-- ✅ Automatic backups in `deployments/<name>/backups/`
+
+## Pre-Deployment Checklist
+
+Before applying cache configuration changes:
+
+1. **Check for old deployments** ask user before cleanup:
+   ```bash
+   helm list -n ${NAMESPACE}
+   kubectl get all -n ${NAMESPACE}
+   ```
+   If old deployments exist, **ask user**: "Found old deployments [list]. Should I clean them up?"
+   Only proceed with cleanup after user approval.
+
+2. **Verify cluster resources**:
+   ```bash
+   kubectl describe nodes | grep -A 5 "Allocated resources"
+   kubectl get nodes -o custom-columns=NAME:.metadata.name,GPUs:.status.allocatable."nvidia\.com/gpu"
+   ```
+
+3. **Check current configuration**:
+   ```bash
+   bash skills/llmd-cache-config/scripts/show-current-config.sh ${NAMESPACE}
+   ```
+
+4. **Preview changes with --dry-run**:
+   ```bash
+   bash skills/llmd-cache-config/scripts/update-cache-config.sh -n ${NAMESPACE} -g 0.95 --dry-run
+   ```
+
+## Safety Guidelines
+
+- ✅ **NEVER delete resources without user approval**
+- ✅ Check for conflicting deployments, ask before cleanup
+- ✅ Verify sufficient cluster resources (GPU, RDMA, memory)
+- ✅ Always check current config first
+- ✅ Use `--dry-run` to preview changes
+- ✅ Automatic backups created in `deployments/<name>/backups/`
 - ✅ Rolling updates maintain availability
 - ✅ Verify settings in pod logs after changes
 
