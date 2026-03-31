@@ -42,13 +42,17 @@ Modify cache settings in existing llm-d deployments: GPU memory utilization, blo
 
 **Note**: Initial setup of tiered prefix cache offloading (CPU RAM, local disk, or shared storage) requires redeployment. See [`guides/tiered-prefix-cache/README.md`](../../guides/tiered-prefix-cache/README.md) for new deployments.
 
-## When to Use
+## Capabilities
 
-- **Low cache hit rate** → Reduce GPU memory, decrease block size
-- **OOM errors** → Reduce GPU memory, decrease max length
-- **Long contexts needed** → Increase max length, reduce GPU memory, increase SHM
-- **High throughput** → Increase GPU memory, standard block size
-- **Multi-GPU (TP>2)** → Increase SHM as needed
+This skill enables you to tune cache performance without redeployment:
+
+- **GPU Memory Utilization** (`-g`): Adjust GPU memory allocation (0.0-1.0) to balance throughput vs. OOM risk
+- **Block Size** (`-b`): Change cache granularity (16-128 tokens) to optimize cache hit rates and memory efficiency
+- **Max Context Length** (`-m`): Extend or reduce maximum context window to support longer documents or save memory
+- **Shared Memory** (`-s`): Configure SHM size for multi-GPU tensor parallelism setups
+- **CPU Cache Size**: Tune CPU offloading capacity for deployments with tiered caching already enabled
+- **Prefix Cache Routing**: Adjust InferencePool scorer weights to optimize cache-aware request scheduling
+
 
 ## Workflow
 
