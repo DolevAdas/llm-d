@@ -42,7 +42,7 @@ Modify cache settings in existing llm-d deployments: GPU memory utilization, blo
 
 **Note**: Initial setup of tiered prefix cache offloading (CPU RAM, local disk, or shared storage) requires redeployment. See [`guides/tiered-prefix-cache/README.md`](../../guides/tiered-prefix-cache/README.md) for new deployments.
 
-## Capabilities
+## When to Use
 
 This skill enables you to tune cache performance without redeployment:
 

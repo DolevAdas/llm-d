@@ -28,6 +28,11 @@ description: Execute scaling actions for llm-d prefill/decode workers on Kuberne
 
 2. **Do NOT modify existing repository code** - Only create new files. Never edit pre-existing repository files. For customization, create new files and reference them.
 
+3. **ALWAYS use existing skill scripts first** - Use scripts in [scripts](./scripts). Only perform manual edits if scripts fail due to non-standard deployment structure.
+
+
+4. **Verify cluster resources** - Check available GPU/RDMA resources before applying changes.
+
 
 ## Overview
 
