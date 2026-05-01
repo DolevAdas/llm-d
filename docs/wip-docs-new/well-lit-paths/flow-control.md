@@ -45,7 +45,7 @@ In addition to inter-tenant prioritization and fairness, flow control also enabl
 
 ## Deploy
 
-The well-lit path and manifests will be released shortly.
+For detailed step-by-step instructions on how to deploy and configure Flow Control, see the [Flow Control Guide]((https://github.com/llm-d/llm-d/tree/main/guides/flow-control/README.md).
 
 ## Architecture
 
@@ -65,4 +65,4 @@ In the background EPP monitors the model servers for saturation. If it detects s
 
 ## Further Reading
 
-See [Flow Control architecture](../architecture/core/epp/flow-control.md) for full details of the design.
+See [Flow Control architecture](https://github.com/llm-d/llm-d/blob/main/docs/wip-docs-new/architecture/core/router/epp/flow-control.md) for full details of the design.
