@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baseline-8tp2
+  labels:
+    app: baseline-8tp2
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: baseline-8tp2
+  template:
+    metadata:
+      labels:
+        app: baseline-8tp2
+    spec:
+      containers:
+        - name: vllm
+          image: docker.io/vllm/vllm-openai:v0.23.0
+          imagePullPolicy: IfNotPresent
+          command: ["vllm", "serve"]
+          args:
+            - "openai/gpt-oss-120b"
+            - "--tensor-parallel-size=2"
+            - "--gpu-memory-utilization=0.90"
+            - "--max-model-len=8192"
+            - "--block-size=128"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: llm-d-hf-token
+                  key: HF_TOKEN
+          resources:
+            limits:
+              cpu: "16"
+              memory: 32Gi
+              nvidia.com/gpu: "2"
+            requests:
+              cpu: "16"
+              memory: 32Gi
+              nvidia.com/gpu: "2"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 60
+            periodSeconds: 10
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: shm
+            - mountPath: /.cache
+              name: torch-compile-cache
+            - mountPath: /.triton
+              name: triton-cache
+      volumes:
+        - name: torch-compile-cache
+          emptyDir: {}
+        - name: triton-cache
+          emptyDir: {}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: baseline-8tp2
+  labels:
+    app: baseline-8tp2
+spec:
+  type: ClusterIP
+  selector:
+    app: baseline-8tp2
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+      protocol: TCP

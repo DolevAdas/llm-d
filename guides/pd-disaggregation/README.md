@@ -601,3 +601,9 @@ For this workload (20:1 ISL:OSL, 45 QPS), llm-d disaggregation improved mean and
 > processing prefills as they arrive. TTFT is elevated in the
 > disaggregated setup because less resources are allocated to
 > processing prefills.
+
+### Additional Benchmark Results
+
+| Hardware | llm-d | vLLM | Results |
+| -------- | ----- | ---- | ------- |
+| 16× H100 (UCX RoCE) | v0.8.0 | v0.23.0 | [Benchmark Results — gpt-oss-120b](./benchmark-results-gpt-oss-120b-v023.md) |
